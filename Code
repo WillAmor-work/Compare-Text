@@ -1,833 +1,1208 @@
----------------------------------------------------------------------------------------------------------------------------------
--- This script resets the LASTINTERNALCODE table to ensure it accurately reflects the highest code for each table referenced.
----------------------------------------------------------------------------------------------------------------------------------
-delete from LASTINTERNALCODE where INTERNALSEQUENCE is null
+use EMEABB
 go
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'ADDRESS')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 	'ADDRESS', isnull(max(ADDRESSCODE),1)
-	from 	ADDRESS
-else
-	Update 	LASTINTERNALCODE 
-	set 	INTERNALSEQUENCE= (select max( ADDRESSCODE) from ADDRESS)
-	where 	TABLENAME='ADDRESS'
-go  
-                     
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'CASES')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'CASES', isnull(max(CASEID),1)
-	from 	CASES
-else
-	Update 	LASTINTERNALCODE 
-	set 	INTERNALSEQUENCE= (select isnull(max(CASEID),1) from CASES)
-	where 	TABLENAME='CASES'
-go 
-
--- sqa20447 - ensure next caseno is > 0 if all existing caseno are negative  or 0
-IF (SELECT [INTERNALSEQUENCE] FROM [dbo].[LASTINTERNALCODE] WHERE [TABLENAME] = N'CASES') < 1 
-UPDATE [dbo].[LASTINTERNALCODE] 
-SET [INTERNALSEQUENCE] = 1 
-WHERE 
-[TABLENAME] = N'CASES'
+set concat_null_yields_null off
+go
+ 
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_Log_ActionDetail')
+  DROP TABLE dbo.Conv_Log_ActionDetail
 GO
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'CHECKLISTS')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'CHECKLISTS', isnull(max(CHECKLISTTYPE),1)
-	from 	CHECKLISTS
-else
-	Update 	LASTINTERNALCODE 
-	set 	INTERNALSEQUENCE= (select max( CHECKLISTTYPE ) from CHECKLISTS)
-	where 	TABLENAME='CHECKLISTS'
-go       
-          
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'CORRESPONDTO')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'CORRESPONDTO', isnull(max(CORRESPONDTYPE),600)
-	from 	CORRESPONDTO
-else
-	Update 	LASTINTERNALCODE 
-	set 	INTERNALSEQUENCE= (select ISNULL(max( CORRESPONDTYPE ),600) from CORRESPONDTO)
-	where 	TABLENAME='CORRESPONDTO'
-go      
+CREATE TABLE dbo.Conv_Log_ActionDetail (
+  ID            int            IDENTITY,
+  Source        nvarchar (254) NULL,
+  ScriptName    nvarchar (254) NULL,
+  ProcedureName nvarchar (254) NULL,
+  SectionDesc   nvarchar (254) NULL,
+  Message       nvarchar (254) NULL,
+  TargetTable   nvarchar (254) NULL,
+  StartTime     datetime       NULL,
+  EndTime       datetime       NULL,
+  RowsAffected  bigint         NULL,
+  Error         int            NULL
+)
+GO
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'CRITERIA')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	(select 'CRITERIA',	CASE	WHEN max( CRITERIANO ) is null THEN 500
-					WHEN max( CRITERIANO ) < 0     THEN 500
-		                        ELSE max( CRITERIANO )
-				END
-	from CRITERIA )
-else      
-	Update 	LASTINTERNALCODE
-	set 	INTERNALSEQUENCE= (select CASE 	WHEN max( CRITERIANO ) is null THEN 500
-                                           	WHEN max( CRITERIANO ) < 0     THEN 500
-		                                ELSE max( CRITERIANO )
-	                              	   END 
-				   from CRITERIA)
-	where TABLENAME='CRITERIA'
-go                     
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_NAME = 'cpass_conv_Log_Start')
+  DROP PROCEDURE dbo.cpass_conv_Log_Start
+GO
+
+CREATE PROCEDURE dbo.cpass_conv_Log_Start @Source        nvarchar (254),
+                                              @ScriptName    nvarchar (254),
+                                              @ProcedureName nvarchar (254),
+                                              @SectionDesc   nvarchar (254),
+                                              @Message       nvarchar (254),
+                                              @TargetTable   nvarchar (254),
+                                              @PrintMessage  tinyint = 0,
+                                              @LogID         int = NULL OUTPUT AS
+/******************************************************************************
+ Copyright: 2018 - CPA Software Solutions Ltd.
+
+ Description: 
+
+ Use: 
+
+ Modification History:
+
+******************************************************************************/
+BEGIN
+  SET NOCOUNT ON
+
+  DECLARE @Error       int
+
+  INSERT INTO dbo.Conv_Log_ActionDetail (Source, ScriptName, ProcedureName,  SectionDesc,  Message,  TargetTable, StartTime)
+  VALUES   (@Source, @ScriptName, @ProcedureName, @SectionDesc, @Message, @TargetTable, GETDATE ())
+
+  SET @Error = @@ERROR
+
+  SET @LogID = SCOPE_IDENTITY ()
+
+  RETURN @Error
+
+END -- procedure cpass_conv_Log_Start
+GO
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_NAME = 'cpass_conv_Log_End')
+  DROP PROCEDURE dbo.cpass_conv_Log_End
+GO
+
+CREATE PROCEDURE dbo.cpass_conv_Log_End @LogID        int,
+                                            @RowsAffected bigint,
+                                            @InputError   int,
+                                            @PrintMessage tinyint = 0 AS
+/******************************************************************************
+ Copyright: 2018 - CPA Software Solutions Ltd.
+
+ Description: 
  
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'DEBTORSTATUS')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 	'DEBTORSTATUS', isnull(max(BADDEBTOR),500)
-	from 	DEBTORSTATUS
-else 
-	Update 	LASTINTERNALCODE
-	set 	INTERNALSEQUENCE= (select ISNULL(max( BADDEBTOR ),500) from DEBTORSTATUS)
-	where 	TABLENAME='DEBTORSTATUS'
-go      
+ Modification History:
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'DELIVERYMETHOD')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'DELIVERYMETHOD', isnull(max(DELIVERYID),500)
-	from DELIVERYMETHOD
-else       
-	Update 	LASTINTERNALCODE
-	set 	INTERNALSEQUENCE= (select ISNULL(max( DELIVERYID ),500) from DELIVERYMETHOD)
-	where 	TABLENAME='DELIVERYMETHOD'
-go      
+******************************************************************************/
+BEGIN
+  SET NOCOUNT ON
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'DOCUMENT')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 	'DOCUMENT', isnull(max(DOCUMENTNO),500)
-	from 	DOCUMENT
-else     
-	Update 	LASTINTERNALCODE
-	set 	INTERNALSEQUENCE= (select ISNULL(max( DOCUMENTNO ),500) from DOCUMENT)
-	where 	TABLENAME='DOCUMENT'
-go        
+  DECLARE @Error       int
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'EVENTCATEGORY')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'EVENTCATEGORY', isnull(max(CATEGORYID),500)
-	from 	EVENTCATEGORY
-else                  
-	Update 	LASTINTERNALCODE
-	set 	INTERNALSEQUENCE= (select ISNULL(max( CATEGORYID ),500) from EVENTCATEGORY)
-	where 	TABLENAME='EVENTCATEGORY'
-go      
+  UPDATE dbo.Conv_Log_ActionDetail
+  SET EndTime      = GETDATE (),
+      RowsAffected = @RowsAffected,
+      Error        = @InputError
+  WHERE  ID = @LogID
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'EVENTS')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'EVENTS', isnull(max(EVENTNO),500)
-	from 	EVENTS
-else                  
-	Update 	LASTINTERNALCODE
-	set 	INTERNALSEQUENCE= (select ISNULL(max( EVENTNO ),500) from EVENTS)
-	where 	TABLENAME='EVENTS'
-go      
+  SET @Error = @@ERROR
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'FEELIST')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'FEELIST', isnull(max(FEELISTNO),500)
-	from	FEELIST
-else
-	Update 	LASTINTERNALCODE
-	set 	INTERNALSEQUENCE= (select ISNULL(max( FEELISTNO ),500) from FEELIST)
-	where 	TABLENAME='FEELIST'
-go      
+  RETURN @Error
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'IMAGE')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'IMAGE', isnull(max(IMAGEID),500)
-	FROM	IMAGE
-else
-	Update 	LASTINTERNALCODE
-	set 	INTERNALSEQUENCE= (select ISNULL(max( IMAGEID ),500) from IMAGE)
-	where 	TABLENAME='IMAGE'
-go      
+END -- procedure cpass_conv_Log_End
+GO
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'INSTRUCTIONS')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'INSTRUCTIONS', isnull(max( INSTRUCTIONCODE ),500)
-	FROM	INSTRUCTIONS
-else                     
-	Update 	LASTINTERNALCODE
-	set 	INTERNALSEQUENCE= (select ISNULL(max( INSTRUCTIONCODE ),500) from INSTRUCTIONS)
-	where 	TABLENAME='INSTRUCTIONS'
-go      
+--DPH Is this related to converted dates action?
 
+--IF EXISTS (select * from sysobjects where type = 'U' and NAME = 'Conv_IMPORTLEGACYCASEEVENT')
+--  DROP TABLE dbo.Conv_IMPORTLEGACYCASEEVENT
+--GO
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'INTERNALREFSTEM')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'INTERNALREFSTEM', isnull(max( STEMUNIQUENO ),500)
-	FROM	INTERNALREFSTEM
-else   
-	Update LASTINTERNALCODE
-	set INTERNALSEQUENCE= (select ISNULL(max( STEMUNIQUENO ),500) from INTERNALREFSTEM)
-	where TABLENAME='INTERNALREFSTEM'
-go       
+--CREATE TABLE dbo.Conv_IMPORTLEGACYCASEEVENT (
+--			IRN					nvarchar (30)  NOT NULL,
+--			EVENTNO				integer        NULL, 
+--			EVENTCODE			nvarchar  (10) NULL,
+--			EVENTDESCRIPTION	nvarchar (100) NULL,
+--			EVENTDATE			datetime       NULL,
+--			EVENTDUEDATE		datetime       NULL,
+--			CYCLE				integer        NULL, 
+--			OCCURREDFLAG		decimal (1, 0) NULL, 
+--			EVENTTEXT			nvarchar (254) NULL
+--)
+--GO
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'ITEM')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'ITEM', isnull(max( ITEM_ID ),1)
-	FROM	ITEM
-else
-	Update LASTINTERNALCODE set INTERNALSEQUENCE= (select max( ITEM_ID) from ITEM)
-	where TABLENAME='ITEM'
-go  
+--IF EXISTS (select * from sysobjects where type = 'U' and NAME =  'Conv_IMPORTLEGACYEVENTWITHNO')
+--  DROP TABLE dbo.Conv_IMPORTLEGACYEVENTWITHNO
+--GO
 
-           
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'KEYWORDS')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'KEYWORDS', isnull(max( KEYWORDNO ),500)
-	FROM 	KEYWORDS
-else  
-	Update LASTINTERNALCODE
-	set INTERNALSEQUENCE= (select ISNULL(max( KEYWORDNO ),500) from KEYWORDS)
-	where TABLENAME='KEYWORDS'
-go      
-               
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'LANGUAGE')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'LANGUAGE', isnull(max( LANGUAGE_CODE ),500)
-	FROM	LANGUAGE
-else  
-	Update LASTINTERNALCODE
-	set INTERNALSEQUENCE= (select ISNULL(max( LANGUAGE_CODE ),500) from LANGUAGE)
-	where TABLENAME='LANGUAGE'
-go      
+--CREATE TABLE dbo.Conv_IMPORTLEGACYEVENTWITHNO (
+--			  EVENTNO          integer  IDENTITY (-102000000, -1),
+--			  EVENTCODE        nvarchar  (10) NULL,
+--			  EVENTDESCRIPTION nvarchar (100) NULL
+--)
+--GO
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'LETTER')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'LETTER', isnull(max( LETTERNO ),500)
-	FROM 	LETTER
-else               
-	Update LASTINTERNALCODE
-	set INTERNALSEQUENCE= (select ISNULL(max( LETTERNO),500) from LETTER)
-	where TABLENAME='LETTER'
-go      
-                   
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'NAME')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'NAME', isnull(max( NAMENO ),500)
-	FROM 	NAME
-else 
-	Update LASTINTERNALCODE
-	set INTERNALSEQUENCE= (select ISNULL(max( NAMENO ),500) from NAME)
-	where TABLENAME='NAME'
-go      
+/*
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'NAMEFAMILY')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'NAMEFAMILY', isnull(max( FAMILYNO ),500)
-	FROM	NAMEFAMILY
-else                  
-	Update LASTINTERNALCODE
-	set INTERNALSEQUENCE= (select ISNULL(max( FAMILYNO ),500) from NAMEFAMILY)
-	where TABLENAME='NAMEFAMILY'
-go      
+if exists(SELECT	*
+			FROM	INFORMATION_SCHEMA.ROUTINES
+			where	ROUTINE_NAME = 'Conv_fn_RemoveNoiseCharacters'
+			and		ROUTINE_TYPE = 'FUNCTION')
+	drop function Conv_fn_RemoveNoiseCharacters
+go
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'NAMEGROUPS')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'NAMEGROUPS', isnull(max( NAMEGROUP ),500)
-	FROM 	NAMEGROUPS
-else               
-	Update LASTINTERNALCODE
-	set INTERNALSEQUENCE= (select ISNULL(max( NAMEGROUP ),500) from NAMEGROUPS)
-	where TABLENAME='NAMEGROUPS'
-go      
+CREATE  FUNCTION [dbo].Conv_fn_RemoveNoiseCharacters
+       (
+            @psName nvarchar(1000) -- character string between 2 goods
+       )
+Returns nvarchar(1000)
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'NARRATIVE')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'NARRATIVE', isnull(max( NARRATIVENO ),500)
-	FROM	NARRATIVE
-else   
-	Update LASTINTERNALCODE
-	set INTERNALSEQUENCE= (select ISNULL(max( NARRATIVENO ),500) from NARRATIVE)
-	where TABLENAME='NARRATIVE'
-go    
+-- FUNCTION : Conv_fn_RemoveNoiseCharacters
+-- VERSION : 1
+-- DESCRIPTION:     This function accepts a CaseId and a Separator and returns all
+--           Inventors in one text string, seperated by the Seperator
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'NARRATIVERULE')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'NARRATIVERULE', isnull(max( NARRATIVERULENO ),500)
-	FROM	NARRATIVERULE
-else   
-	Update LASTINTERNALCODE
-	set INTERNALSEQUENCE= (select ISNULL(max( NARRATIVERULENO ),500) from NARRATIVERULE)
-	where TABLENAME='NARRATIVERULE'
-go      
+-- Date          Who Number Version             Description
+-- ====         === ====== =======             ===========
+-- 7 Mar 2018   CGS            1            Function created
+as
+Begin
+	DECLARE @i int
+	DECLARE @sString varchar(100)
+	declare @nLength int
 
+	SET @i = (SELECT PATINDEX('%[^a-z^0-9 ]%', @psName))
+	set @sString = @psName
+	set @nLength = 1
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'POLICING')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'POLICING', isnull(max( POLICINGSEQNO ),500)
-	FROM	POLICING
-else               
-	Update LASTINTERNALCODE
-	set INTERNALSEQUENCE= (select ISNULL(max( POLICINGSEQNO ),500) from POLICING)
-	where TABLENAME='POLICING'
-go 
+	WHILE (@i > 0)
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'QUESTION')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'QUESTION', isnull(max( QUESTIONNO ),500)
-	FROM 	QUESTION
-else  
-	Update LASTINTERNALCODE
-	set INTERNALSEQUENCE= (select ISNULL(max( QUESTIONNO),500) from QUESTION)
-	where TABLENAME='QUESTION'
-go     
+	BEGIN
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'RATES')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'RATES', isnull(max( RATENO ),500)
-	FROM	RATES
-else                 
-	Update LASTINTERNALCODE
-	set INTERNALSEQUENCE= (select ISNULL(max( RATENO ),500) from RATES)
-	where TABLENAME='RATES'
-go 
+		  SET @sString = (SELECT REPLACE(@sString, SUBSTRING(@sString, @i, @nLength), ''))
+		  SET @i = (SELECT PATINDEX('%[^a-z^0-9 ]%', @sString))
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'STATUS')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'STATUS', isnull(max( STATUSCODE ),500)
-	FROM	STATUS
-else                           
-	Update LASTINTERNALCODE
-	set INTERNALSEQUENCE= (select ISNULL(max( STATUSCODE ),500) from STATUS)
-	where TABLENAME='STATUS'
-go      
+	END
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'TABLECODES')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'TABLECODES', isnull(max( TABLECODE ),500)
-	FROM	TABLECODES
-else                
-	Update LASTINTERNALCODE
-	set INTERNALSEQUENCE= (select ISNULL(max( TABLECODE ),500) from TABLECODES)
-	where TABLENAME='TABLECODES'
-go    
-
-begin
-	declare @refno int
-	select @refno = (select max( TABLETYPE ) from TABLETYPE)
-	if (@refno = NULL or @refno < 5000)
-		select @refno = 5000
-	if not exists (select * from LASTINTERNALCODE where TABLENAME = 'TABLETYPE')
-		INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-		values ('TABLETYPE', @refno )
-	else               
-	Update LASTINTERNALCODE
-	set INTERNALSEQUENCE= @refno where TABLENAME='TABLETYPE'
+	if PATINDEX('% CO Ltd', @sString) > 0
+		begin 
+			SET @i = (SELECT PATINDEX('% CO Ltd', @sString))
+			set @nLength = 7
+		end
+	else
+	if PATINDEX('% AB', @sString) > 0
+		begin 
+			SET @i = (SELECT PATINDEX('% AB', @sString))
+			set @nLength = 3
+		end
+	else
+	if PATINDEX('% SC', @sString) > 0
+		begin 
+			SET @i = (SELECT PATINDEX('% SC', @sString))
+			set @nLength = 3
+		end
+	else
+	if PATINDEX('% AG', @sString) > 0
+		begin 
+			SET @i = (SELECT PATINDEX('% AG', @sString))
+			set @nLength = 3
+		end
+	else
+	if PATINDEX('% LTD%', @sString) > 0
+		begin 
+			SET @i = (SELECT PATINDEX('% LTD%', @sString))
+			set @nLength = 4
+		end
+	else
+	if PATINDEX('% LLC%', @sString) > 0
+		begin 
+			SET @i = (SELECT PATINDEX('% LLC%', @sString))
+			set @nLength = 4
+		end
+	else
+	if PATINDEX('% LLP%', @sString) > 0
+		begin 
+			SET @i = (SELECT PATINDEX('% LLP%', @sString))
+			set @nLength = 4
+		end
+	else
+	if PATINDEX('% Limited%', @sString) > 0
+		begin 
+			SET @i = (SELECT PATINDEX('% Limited%', @sString))
+			set @nLength = 8
+		end
+	else
+	if PATINDEX('% Office%', @sString) > 0
+		begin 
+			SET @i = (SELECT PATINDEX('% Office%', @sString))
+			set @nLength = 7
+		end
+	else
+	if	PATINDEX('% GMBH%', @sString) > 0 
+		begin
+			SET @i = (SELECT PATINDEX('% GMBH%', @sString))
+			set @nLength = 5
+		end
+	else
+	if	PATINDEX('% INC%', @sString) > 0 
+		begin
+			SET @i = (SELECT PATINDEX('% INC%', @sString))
+			set @nLength = 4
+		end
+	else
+	if	PATINDEX('% SRL%', @sString) > 0 
+		begin
+			SET @i = (SELECT PATINDEX('% SRL%', @sString))
+			set @nLength = 4
+		end
+	else
+	if	PATINDEX('% SPA', @sString) > 0 
+		begin
+			SET @i = (SELECT PATINDEX('% SPA', @sString))
+			set @nLength = 4
+		end
+	
+	if @nLength > 1
+		SET @sString = (SELECT REPLACE(@sString, SUBSTRING(@sString, @i, @nLength), ''))			
+	
+	return @sString
 end
-go   
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'TELECOMMUNICATION')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'TELECOMMUNICATION', isnull(max( TELECODE ),500)
-	from TELECOMMUNICATION
-else              
-	Update LASTINTERNALCODE
-	set INTERNALSEQUENCE= (select ISNULL(max( TELECODE ),500) from TELECOMMUNICATION)
-	where TABLENAME='TELECOMMUNICATION'
-go   
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'TIMECOSTING')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'TIMECOSTING', isnull(max( COSTINGSEQNO ),500)
-	from	TIMECOSTING
-else 
-	Update LASTINTERNALCODE
-	set INTERNALSEQUENCE= (select ISNULL(max( COSTINGSEQNO ),500) from TIMECOSTING)
-	where TABLENAME='TIMECOSTING'
-go   
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'TRANSACTIONHEADER')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'TRANSACTIONHEADER', isnull(max( ABS(TRANSNO) ),500)
-	FROM	TRANSACTIONHEADER
-else             
-	Update LASTINTERNALCODE
-	set INTERNALSEQUENCE= (select ISNULL(max( ABS(TRANSNO) ),500) from TRANSACTIONHEADER)
-	where TABLENAME='TRANSACTIONHEADER'
-go  
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'USERQUERY')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'USERQUERY', isnull(max( REFERENCENO ),500)
-	FROM 	USERQUERY
-else 
-	Update LASTINTERNALCODE
-	set INTERNALSEQUENCE= (select ISNULL(max( REFERENCENO ),500) from USERQUERY)
-	where TABLENAME='USERQUERY'
-go 
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'BILLRULE')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'BILLRULE', isnull(max( RULESEQNO ),1)
-	from BILLRULE 
-else
-	Update LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(max(RULESEQNO),500) from BILLRULE)
-	where TABLENAME='BILLRULE'
 go
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'IMPORTBATCH')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'IMPORTBATCH', isnull(max( IMPORTBATCHNO ),1)
-	from 	IMPORTBATCH
-else
-	Update LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(max(IMPORTBATCHNO),500) from IMPORTBATCH)
-	where TABLENAME='IMPORTBATCH'
-go                           
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'ACTIVITY')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'ACTIVITY', isnull(max( ACTIVITYNO ),1)
-	from 	ACTIVITY
-else
-	Update LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(max(ACTIVITYNO),500) from ACTIVITY)
-	where TABLENAME='ACTIVITY'
-go                          
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'NAMEADDRESSSNAP')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'NAMEADDRESSSNAP', isnull(max( NAMESNAPNO ),1)
-	from 	NAMEADDRESSSNAP
-else
-	Update LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(max(NAMESNAPNO),500) from NAMEADDRESSSNAP)
-	where TABLENAME='NAMEADDRESSSNAP'
-go  
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'AUDITLOCATION')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'AUDITLOCATION', isnull(max( AUDITNUMBER ),1)
-	from 	AUDITLOCATION
-else
-	Update LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(max(AUDITNUMBER),500) from AUDITLOCATION)
-	where TABLENAME='AUDITLOCATION'
+if exists(SELECT	*
+			FROM	INFORMATION_SCHEMA.ROUTINES
+			where	ROUTINE_NAME = 'Conv_fn_RemoveNonNumericCharacters'
+			and		ROUTINE_TYPE = 'FUNCTION')
+	drop function Conv_fn_RemoveNonNumericCharacters
 go
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'BILLFORMAT')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'BILLFORMAT', isnull(max( BILLFORMATID ),1)
-	from 	BILLFORMAT 
-else
-	Update LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(max(BILLFORMATID),500) from BILLFORMAT)
-	where TABLENAME='BILLFORMAT'
+CREATE  FUNCTION [dbo].Conv_fn_RemoveNonNumericCharacters
+       (
+            @psName nvarchar(1000) -- character string between 2 goods
+       )
+Returns nvarchar(1000)
+
+-- FUNCTION : Conv_fn_RemoveNonNumericCharacters
+-- VERSION : 1
+-- DESCRIPTION:    
+
+-- Date          Who Number Version             Description
+-- ====         === ====== =======             ===========
+-- 7 Mar 2018   CGS            1            Function created
+as
+Begin
+	DECLARE @i int
+	DECLARE @sString varchar(100)
+	declare @nLength int
+
+	SET @i = (SELECT PATINDEX('%[^0-9 ]%', @psName))
+	set @sString = @psName
+	set @nLength = 1
+
+	WHILE (@i > 0)
+
+	BEGIN
+
+		  SET @sString = (SELECT REPLACE(@sString, SUBSTRING(@sString, @i, @nLength), ''))
+		  SET @i = (SELECT PATINDEX('%[^0-9 ]%', @sString))
+
+	END
+	
+	if @nLength > 1
+		SET @sString = (SELECT REPLACE(@sString, SUBSTRING(@sString, @i, @nLength), ''))			
+	
+	return @sString
+end
+go
+*/
+
+--DPH check whats not included in mapping doc from below
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'CONV_CASETYPEMAP')
+  DROP TABLE dbo.CONV_CASETYPEMAP
+GO
+
+create table CONV_CASETYPEMAP (
+			BB_CASETYPE			nvarchar(50) not null,
+			BB_CASETYPEDESC		nvarchar(50) not null,
+			CASETYPE			nvarchar(50) null,	
+			PROPERTYTYPE		nvarchar(50) null,
+			SPECIALMAPPING		nvarchar(20) null,		
+			NOTES				nvarchar(100) null
+)
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'CONV_CASECATMAP')
+  DROP TABLE dbo.CONV_CASECATMAP
+GO
+
+create table CONV_CASECATMAP (
+			BB_PROPERTYTYPE     nvarchar(50) not null,
+			BB_IC_CODE			nvarchar(100) not null,
+			BB_COUNTRY_CODE		nvarchar(100) null,
+			CASECATEGORY		nvarchar(100) null,	
+			SUBTYPE				nvarchar(20) null,
+			SPECIALMAPPING		nvarchar(20) null,			
+			NOTES			nvarchar(100) null
+)
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'CONV_SUBTYPEMAP')
+  DROP TABLE dbo.CONV_SUBTYPEMAP
+GO
+
+create table CONV_SUBTYPEMAP (
+			SY_SUBTYPE		nvarchar(100) null,	
+			SUBTYPE			nvarchar(100) null,
+			SPECIALMAPPING		nvarchar(20) null,		
+			NOTES			nvarchar(100) null
+)
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'CONV_PROPERTYTYPEMAP')
+  DROP TABLE dbo.CONV_PROPERTYTYPEMAP
+GO
+
+create table CONV_PROPERTYTYPEMAP (
+			SY_PROPERTYTYPE			nvarchar(100) null,	
+			PROPERTYTYPE			nvarchar(100) null,
+			SPECIALMAPPING			nvarchar(20) null,		
+			NOTES				nvarchar(100) null
+)
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_STATUSMAP')
+  DROP TABLE dbo.Conv_STATUSMAP
+GO
+
+
+
+create table Conv_STATUSMAP (
+		SY_STATUSCODE				nvarchar(100) not null,
+		STATUSCODE					nvarchar(50) null,
+		SPECIALMAPPING				nvarchar(250) null,	
+		NOTES						nvarchar(100) null
+)
+
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_COUNTRYMAP')
+  DROP TABLE dbo.Conv_COUNTRYMAP
+GO
+
+create table Conv_COUNTRYMAP (
+		BB_COUNTRY_CODE			nvarchar(10) not null,
+		BB_COUNTRYDESC			nvarchar(200) not null,
+		COUNTRYCODE				nvarchar(3) null,
+		COUNTRY					nvarchar(100) null,
+		SPECIALMAPPING			nvarchar(20) null,	
+		NOTES					nvarchar(100) null)
 go
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'COSTTRACK')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'COSTTRACK', isnull(max( COSTID ),1)
-	from 	COSTTRACK 
-else
-	Update LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(max(COSTID),500) from COSTTRACK)
-	where TABLENAME='COSTTRACK'
-go
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_EVENTMAP_APPS_DN')
+  DROP TABLE dbo.Conv_EVENTMAP_APPS_DN
+GO
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'CPADATA')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'CPADATA', isnull(max( BATCHNO ),1)
-	from 	CPADATA 
-else
-	Update LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(max(BATCHNO),500) from CPADATA)
-	where TABLENAME='CPADATA'
-go
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'CRITERIA_ITEMS')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'CRITERIA_ITEMS', isnull(max( CRITERIA_ID ),1)
-	from 	CRITERIA_ITEMS 
-else
-	Update LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(max(CRITERIA_ID),500) from CRITERIA_ITEMS)
-	where TABLENAME='CRITERIA_ITEMS'
-go
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'CRITERIA_MAXIM')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'CRITERIA_MAXIM', isnull(min( CRITERIANO ),1)
-	from 	CRITERIA 
-else
-	Update LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(min(CRITERIANO),500) from CRITERIA)
-	where TABLENAME='CRITERIA_MAXIM'
-go
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'DEBITNOTEDETAILS')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'DEBITNOTEDETAILS', isnull(max( DEBITNOTENUMBER ),1)
-	from 	DEBITNOTEDETAILS 
-else
-	Update LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(max(DEBITNOTENUMBER),500) from DEBITNOTEDETAILS)
-	where TABLENAME='DEBITNOTEDETAILS'
-go
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'DOCUMENT_CRITERIA')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'DOCUMENT_CRITERIA', isnull(max( CRITERIA_ID ),1)
-	from 	DOCUMENT_CRITERIA 
-else
-	Update LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(max(CRITERIA_ID),500) from DOCUMENT_CRITERIA)
-	where TABLENAME='DOCUMENT_CRITERIA'
-go
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'DOCUMENTSUMMARY')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'DOCUMENTSUMMARY', isnull(max( DOCUMENT_ID ),1)
-	from 	DOCUMENTSUMMARY 
-else
-	Update LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(max(DOCUMENT_ID),500) from DOCUMENTSUMMARY)
-	where TABLENAME='DOCUMENTSUMMARY'
-go
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'GROUPS')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'GROUPS', isnull(max( GROUP_CODE ),1)
-	from 	GROUPS
-else
-	Update LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(max(GROUP_CODE),500) from GROUPS)
-	where TABLENAME='GROUPS'
-go
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'IMPORTJOURNAL')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'IMPORTJOURNAL', isnull(max( IMPORTBATCHNO ),1)
-	from 	IMPORTJOURNAL
-else
-	Update LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(max(IMPORTBATCHNO),500) from IMPORTJOURNAL)
-	where TABLENAME='IMPORTJOURNAL'
-go
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'INSTRUCTIONLABEL')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'INSTRUCTIONLABEL', isnull(max( FLAGNUMBER ),1)
-	from 	INSTRUCTIONLABEL
-else
-	Update LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(max(FLAGNUMBER),500) from INSTRUCTIONLABEL)
-	where TABLENAME='INSTRUCTIONLABEL'
-go
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'GLACCOUNTTYPE')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'GLACCOUNTTYPE', isnull(max( ACCOUNTTYPE ),1)
-	from 	GLACCOUNTTYPE 
-else
-	Update LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(max(ACCOUNTTYPE),500) from GLACCOUNTTYPE)
-	where TABLENAME='GLACCOUNTTYPE'
-go
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'GLACCOUNTMAPPING')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'GLACCOUNTMAPPING', isnull(max( RULESEQNO ),1)
-	from 	GLACCOUNTMAPPING
-else
-	Update LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(max(RULESEQNO),500) from GLACCOUNTMAPPING)
-	where TABLENAME='GLACCOUNTMAPPING'
-go
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'LABEL')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'LABEL', isnull(max( LABELID ),1)
-	from 	LABEL 
-else
-	Update LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(max(LABELID),500) from LABEL)
-	where TABLENAME='LABEL'
-go
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'GLJOURNALLINEFIELD')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'GLJOURNALLINEFIELD', isnull(max( FIELDNO ),1)
-	from 	GLJOURNALLINEFIELD
-else
-	Update LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(max(FIELDNO),500) from GLJOURNALLINEFIELD)
-	where TABLENAME='GLJOURNALLINEFIELD'
-go
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'MARGIN')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 	'MARGIN', isnull(max(MARGINNO),1)
-	from 	MARGIN
-else
-	Update 	LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(max(MARGINNO),500) from MARGIN)
-	where 	TABLENAME='MARGIN'
-go  
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'IMPORTMETHOD')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 	'IMPORTMETHOD', isnull(max(IMPORTMETHODNO),1)
-	from 	IMPORTMETHOD
-else
-	Update 	LASTINTERNALCODE set INTERNALSEQUENCE= (select ISNULL(max(IMPORTMETHODNO),500) from IMPORTMETHOD)
-	where 	TABLENAME='IMPORTMETHOD'
-go  
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'NAMEVARIANT')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'NAMEVARIANT', isnull(max( NAMEVARIANTNO ),500)
-	from	NAMEVARIANT
-else 
-	Update LASTINTERNALCODE
-	set INTERNALSEQUENCE= (select ISNULL(max( NAMEVARIANTNO ),500) from NAMEVARIANT)
-	where TABLENAME='NAMEVARIANT'
-go   
-
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'CPASEND') 
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE) 
-	select 'CPASEND', isnull(max( BATCHNO ),0) 
-	from CPASEND 
-else 
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select ISNULL(max(BATCHNO),0) from CPASEND) 
-	where TABLENAME='CPASEND' 
-go 
-
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'LEDGERACCOUNT')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'LEDGERACCOUNT', isnull(max(ACCOUNTID),1)
-	from LEDGERACCOUNT
-else
-	Update LASTINTERNALCODE
-	set INTERNALSEQUENCE= (select isnull(max( ACCOUNTID),1) from LEDGERACCOUNT)
-	where TABLENAME='LEDGERACCOUNT'
+create table Conv_EVENTMAP_APPS_DN (
+		BB_APPS_CASE_TYPE			nvarchar(1) null,
+		BB_IC_CODE					nvarchar(8) null,
+		BB_IC_NOS_DESC				nvarchar(15) null,
+		EVENTNO						int null,
+		SPECIALMAPPING				nvarchar(20) null,	
+		NOTES						nvarchar(100) null)
 go
 
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'OFFICE')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'OFFICE', isnull(max(OFFICEID),1)
-	from OFFICE
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(max(OFFICEID),1) from OFFICE)
-	where TABLENAME='OFFICE'
-go 
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_EVENTMAP_DY_MAJ')
+  DROP TABLE dbo.Conv_EVENTMAP_DY_MAJ
+GO
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'ANALYSISCODE')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'ANALYSISCODE', isnull(max(CODEID),1)
-	from ANALYSISCODE
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(max(CODEID),1) from ANALYSISCODE)
-	where TABLENAME='ANALYSISCODE'
-go 
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'CASELIST')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'CASELIST', isnull(max(CASELISTNO),1)
-	from CASELIST
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(max(CASELISTNO),1) from CASELIST)
-	where TABLENAME='CASELIST'
-go 
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'CHEQUEREGISTER')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'CHEQUEREGISTER', isnull(max(CHEQUEREGISTERID),1)
-	from CHEQUEREGISTER
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(max(CHEQUEREGISTERID),1) from CHEQUEREGISTER)
-	where TABLENAME='CHEQUEREGISTER'
+create table Conv_EVENTMAP_DY_MAJ (
+		BB_APPS_CASE_TYPE			nvarchar(1) null,
+		BB_IC_CODE					nvarchar(8) null,
+		BB_MAJ_TRK_ID				nvarchar(6) null,
+		BB_COUNTRY_CODE				nvarchar(3) null,
+		BB_EVENTDESC				nvarchar(150) null,
+		EVENTNO						int null,
+		SPECIALMAPPING				nvarchar(100) null,	
+		NOTES						nvarchar(100) null)
 go
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'COSTRATE')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'COSTRATE', isnull(max(COSTRATENO),1)
-	from COSTRATE
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(max(COSTRATENO),1) from COSTRATE)
-	where TABLENAME='COSTRATE'
-go 
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_EVENTMAP_DY_MAJ_NO_TRKID')
+  DROP TABLE dbo.Conv_EVENTMAP_DY_MAJ_NO_TRKID
+GO
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'CPAEVENT')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'CPAEVENT', isnull(min(CEFNO),-999999)
-	from CPAEVENT
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(min(CEFNO),-999999) from CPAEVENT)
-	where TABLENAME='CPAEVENT'
-go 
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'CRRESTRICTION')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'CRRESTRICTION', isnull(max(CRRESTRICTIONID),1)
-	from CRRESTRICTION
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(max(CRRESTRICTIONID),1) from CRRESTRICTION)
-	where TABLENAME='CRRESTRICTION'
-go 
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'DEFAULTACCOUNT')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'DEFAULTACCOUNT', isnull(max(DEFAULTACCOUNTID),1)
-	from DEFAULTACCOUNT
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(max(DEFAULTACCOUNTID),1) from DEFAULTACCOUNT)
-	where TABLENAME='DEFAULTACCOUNT'
-go 
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'EVENTUPDATEPROFILE')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'EVENTUPDATEPROFILE', isnull(max(PROFILEREFNO),1)
-	from EVENTUPDATEPROFILE
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(max(PROFILEREFNO),1) from EVENTUPDATEPROFILE)
-	where TABLENAME='EVENTUPDATEPROFILE'
-go  
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'FREQUENCY')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'FREQUENCY', isnull(max(FREQUENCYNO),1)
-	from FREQUENCY
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(max(FREQUENCYNO),1) from FREQUENCY)
-	where TABLENAME='FREQUENCY'
-go 
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'IMPORTCONTROL')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'IMPORTCONTROL', isnull(max(CONTROLID),1)
-	from IMPORTCONTROL
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(max(CONTROLID),1) from IMPORTCONTROL)
-	where TABLENAME='IMPORTCONTROL'
-go 
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'INFLATIONINDEX')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'INFLATIONINDEX', isnull(max(INFLATIONINDEXID),1)
-	from INFLATIONINDEX
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(max(INFLATIONINDEXID),1) from INFLATIONINDEX)
-	where TABLENAME='INFLATIONINDEX'
-go 
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'INSTRUCTIONFLAG')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'INSTRUCTIONFLAG', isnull(max(INSTRUCTIONCODE),1)
-	from INSTRUCTIONFLAG
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(max(INSTRUCTIONCODE),1) from INSTRUCTIONFLAG)
-	where TABLENAME='INSTRUCTIONFLAG'
+create table Conv_EVENTMAP_DY_MAJ_NO_TRKID (
+		BB_APPS_CASE_TYPE			nvarchar(1) null,
+		BB_IC_CODE					nvarchar(8) null,
+		BB_MAJ_TRK_ID				nvarchar(6) null,
+		BB_COUNTRY_CODE				nvarchar(3) null,
+		BB_EVENTDESC				nvarchar(150) null,
+		EVENTNO						int null,
+		SPECIALMAPPING				nvarchar(100) null,	
+		NOTES						nvarchar(100) null)
 go
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'INTERENTITYACCOUNT')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'INTERENTITYACCOUNT', isnull(max(INTERENTITYACCTID),1)
-	from INTERENTITYACCOUNT
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(max(INTERENTITYACCTID),1) from INTERENTITYACCOUNT)
-	where TABLENAME='INTERENTITYACCOUNT'
-go  
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_EVENTMAP_NA_FORMALITIES')
+  DROP TABLE dbo.Conv_EVENTMAP_NA_FORMALITIES
+GO
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'MERGEFIELD')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'MERGEFIELD', isnull(max(FIELDID),1)
-	from MERGEFIELD
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(max(FIELDID),1) from MERGEFIELD)
-	where TABLENAME='MERGEFIELD'
-go
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'NAMECRITERIA')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'NAMECRITERIA', isnull(min(NAMECRITERIANO),-1)
-	from NAMECRITERIA
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(min(NAMECRITERIANO),-1) from NAMECRITERIA)
-	where TABLENAME='NAMECRITERIA'
+create table Conv_EVENTMAP_NA_FORMALITIES (
+		BB_APPS_CASE_TYPE			nvarchar(1) null,
+		BB_IC_CODE					nvarchar(8) null,
+		BB_MAJ_TRK_ID				nvarchar(6) null,
+		BB_COUNTRY_CODE				nvarchar(3) null,
+		BB_MAJ_TEXT3				nvarchar(150) null,
+		EVENTNO						int null,
+		SPECIALMAPPING				nvarchar(100) null,	
+		NOTES						nvarchar(100) null)
 go
 
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'PAYMENTPLAN')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'PAYMENTPLAN', isnull(max(PLANID),1)
-	from PAYMENTPLAN
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(max(PLANID),1) from PAYMENTPLAN)
-	where TABLENAME='PAYMENTPLAN'
-go  
+--Conv_TEXTTYPEMAP
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_TEXTTYPEMAP')
+  DROP TABLE dbo.Conv_TEXTTYPEMAP
+GO
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'QUERYLINE')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'QUERYLINE', isnull(max(LINEID),1)
-	from QUERYLINE
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(max(LINEID),1) from QUERYLINE)
-	where TABLENAME='QUERYLINE'
-go 
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'QUOTATION')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'QUOTATION', isnull(max(QUOTATIONNO),1)
-	from QUOTATION
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(max(QUOTATIONNO),1) from QUOTATION)
-	where TABLENAME='QUOTATION'
+create table Conv_TEXTTYPEMAP (
+		BB_APPS_NH_PAGE				nvarchar(10) not null,
+		TEXTTYPE					nvarchar(2) null,
+		TEXTTYPEDESC				nvarchar(50) null,
+		SPECIALMAPPING				nvarchar(20) null,	
+		NOTES						nvarchar(100) null)
 go
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'STANDINGTEMPLT')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'STANDINGTEMPLT', isnull(max(TEMPLATENO),1)
-	from STANDINGTEMPLT
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(max(TEMPLATENO),1) from STANDINGTEMPLT)
-	where TABLENAME='STANDINGTEMPLT'
-go   
+--Conv_NUMBERTYPEMAP
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_NUMBERTYPEMAP')
+  DROP TABLE dbo.Conv_NUMBERTYPEMAP
+GO
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'VALIDATENUMBERS')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'VALIDATENUMBERS', isnull(max(VALIDATIONID),1)
-	from VALIDATENUMBERS
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(max(VALIDATIONID),1) from VALIDATENUMBERS)
-	where TABLENAME='VALIDATENUMBERS'
+create table Conv_NUMBERTYPEMAP (
+		BB_CASETYPE				nvarchar(36) not null,
+		BB_IC_NOS_DESC			nvarchar(100) not null,
+		NUMBERTYPE				nvarchar(36) null,
+		NUMBERTYPEDESC			nvarchar(100) null,
+		SPECIALMAPPING			nvarchar(20) null,	
+		NOTES					nvarchar(100) null)
 go
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'BANKSTATEMENT')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'BANKSTATEMENT', isnull(max(STATEMENTNO),1)
-	from BANKSTATEMENT
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(max(STATEMENTNO),1) from BANKSTATEMENT)
-	where TABLENAME='BANKSTATEMENT'
-go 
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_CASERELATIONMAP')
+  DROP TABLE dbo.Conv_CASERELATIONMAP
+GO
 
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'DRAFT CASES')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'DRAFT CASES', isnull(max(CASEID), -999999999)
-	from CASES C
-	JOIN CASETYPE CT ON C.CASETYPE=CT.CASETYPE
-	where CT.ACTUALCASETYPE IS NOT NULL
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(max(CASEID), -999999999) 
-							from CASES C
-							JOIN CASETYPE CT ON C.CASETYPE=CT.CASETYPE
-							where CT.ACTUALCASETYPE IS NOT NULL)
-	where TABLENAME='DRAFT CASES'
-go 
-
-if not exists (select * from LASTINTERNALCODE where TABLENAME = 'NAMECRITERIA_MAXIM')
-	INSERT INTO LASTINTERNALCODE (TABLENAME, INTERNALSEQUENCE)
-	select 'NAMECRITERIA_MAXIM', isnull(min(namecriteriano), -100)
-	from namecriteria
-else
-	Update LASTINTERNALCODE 
-	set INTERNALSEQUENCE= (select isnull(min(namecriteriano), -100) from namecriteria)
-	where TABLENAME='NAMECRITERIA_MAXIM'
+create table Conv_CASERELATIONMAP (
+		BB_APPS_RL_TYPE				nvarchar(10) not null,
+		BB_IC_CODE					nvarchar(8) not null,
+		BB_APPS_RL_CODE		        nvarchar(8)  null,
+		--BB_COUNTRY_CODE				nvarchar(10) null,
+		RELATIONSHIP				nvarchar(3) null,
+		SPECIALMAPPING				nvarchar(20) null,	
+		NOTES						nvarchar(200) null)
 go
+
+--IF EXISTS (SELECT 1 FROM sysindexes WHERE name = 'XIE_Conv_CASERELATIONMAP_CONV01_MAIN')
+--  DROP INDEX Conv_CASERELATIONMAP.XIE_Conv_CASERELATIONMAP_CONV01_MAIN;
+--GO
+
+--CREATE INDEX XIE_Conv_CASERELATIONMAP_CONV01_MAIN
+--  ON Conv_CASERELATIONMAP
+--     (BB_APPS_RL_TYPE);
+--GO
+
+
+--Names mapping tables
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_NAMERELATIONMAP')
+  DROP TABLE dbo.Conv_NAMERELATIONMAP
+GO
+
+create table Conv_NAMERELATIONMAP (
+		SY_RELATIONSHIP			nvarchar(3) not null,
+		SY_RELATIONDESCR			nvarchar(30) not null,
+		SY_REVERSEDESCR			nvarchar(30) not null,
+		RELATIONSHIP				nvarchar(3) null,
+		RELATIONDESCR				nvarchar(30) null,
+		REVERSEDESCR				nvarchar(30) null,	
+		SPECIALMAPPING				nvarchar(20) null,	
+		NOTES						nvarchar(100) null)
+go
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_CASENAMEMAP')
+  DROP TABLE dbo.Conv_CASENAMEMAP
+GO
+
+create table Conv_CASENAMEMAP (
+		ROLETYPEID			nvarchar(10) not null, 
+		ROLETYPENAME		nvarchar(50) null,
+		SPECIALMAPPING		nvarchar(20) null,	
+		NAMETYPE			nvarchar(10) null, 
+		NAMETYPEDESC		nvarchar(50) null,
+   primary key (roletypeid)     
+)
+go
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_CONTACTNAMES')
+  DROP TABLE dbo.Conv_CONTACTNAMES
+GO
+
+create table Conv_CONTACTNAMES (
+		NameNo				int not null,
+		ENTITY_ID			int not null, 
+		NAME_ID				int not null, 
+		CONTACT_NAME		nvarchar(1000) not null
+)
+go
+
+--IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'CONV_NAMEMAPPINGTABLE')
+--  DROP TABLE dbo.CONV_NAMEMAPPINGTABLE
+--GO
+
+--create table CONV_NAMEMAPPINGTABLE (
+--		ENTITYID			int not null,
+--		NAMEID				int not null, 
+--		NAMENO				int not null,
+--		ATTENTIONAME		smallint null,
+--		AGAINSTNAME			smallint null,
+--		AGAINSTCASES		smallint null
+--)
+--go
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'CONV_NAMEMAPPING')
+  DROP TABLE dbo.CONV_NAMEMAPPING
+GO
+
+create table CONV_NAMEMAPPING (
+		SY_NAMECODE		nvarchar(20) not null, 
+		SY_NAME			nvarchar(254) not null,
+		NAMECODE			nvarchar(20) not null
+)
+go
+
+
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_TelecomTable')
+  DROP TABLE dbo.Conv_TelecomTable
+GO
+
+Create table Conv_TelecomTable
+	(TeleCode		int identity(1,-1) not null,
+	NameNo			int not null,
+	OPID			int  null,
+	PPID			int  null,
+	TeleType		nvarchar(10) not null,
+	TeleDetails		nvarchar(200) not null,
+	ISMAIN			smallint null,
+
+   primary key (nameno, telecode, teletype)     
+	)
+go
+
+
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[Conv_fnParseList]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
+	DROP FUNCTION [dbo].[Conv_fnParseList]
+GO
+
+CREATE FUNCTION dbo.Conv_fnParseList
+(
+	@Delimiter CHAR,
+	@Text nvarchar(max),
+	@NameId		int
+)
+RETURNS @Result TABLE (RowID SMALLINT IDENTITY(1, 1) PRIMARY KEY, Data VARCHAR(8000), NameId int)
+AS
+
+BEGIN
+	DECLARE	@NextPos INT,
+		@LastPos INT
+
+	SELECT	@NextPos = CHARINDEX(@Delimiter, @Text, 1),
+		@LastPos = 0
+
+	WHILE @NextPos > 0
+		BEGIN
+			INSERT	@Result
+				(
+					Data,
+					NameId
+				)
+			SELECT	SUBSTRING(@Text, @LastPos + 1, @NextPos - @LastPos - 1), @NameId
+
+			SELECT	@LastPos = @NextPos,
+				@NextPos = CHARINDEX(@Delimiter, @Text, @NextPos + 1)
+		END
+
+	IF @NextPos <= @LastPos
+		INSERT	@Result
+			(
+				Data,
+				NameId
+			)
+		SELECT	SUBSTRING(@Text, @LastPos + 1, DATALENGTH(@Text) - @LastPos), @NameId
+
+	RETURN
+END
+go
+
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[fn_StripEmailAddress]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
+	DROP FUNCTION [dbo].[fn_StripEmailAddress]
+GO
+
+CREATE FUNCTION [dbo].[fn_StripEmailAddress](@sEmailAddress nvarchar(max))
+RETURNS varchar(max)
+
+AS
+-- Function :	fn_StripEmailAddress
+-- VERSION :	1
+-- COPYRIGHT:	Copyright CPA Software Solutions (Australia) Pty Limited
+-- DESCRIPTION:	Strips out the non ASCII character and returns the remaining text.
+--				It also removes any spaces, char(32)
+-- MODIFICATIONS :
+-- Date		Who	Change	Version	Description
+-- -----------	-------	------	-------	----------------------------------------------- 
+-- 12 Sep 2014	MF		1	Function created
+-- 09 Mar 2020 CGS		2	Created from fn_StripNonASCII and now removing spaces
+BEGIN
+
+    DECLARE @sResult	varchar(max)
+    DECLARE @sChar	nvarchar(1)
+    DECLARE @nPosition	int
+    
+    SET @sResult = ''
+
+    SET @nPosition = 1
+    
+    WHILE @nPosition <= LEN(@sEmailAddress)
+    BEGIN
+        SET @sChar = SUBSTRING(@sEmailAddress, @nPosition, 1)
+        --Unicode & ASCII are the same from 1 to 255.
+        --Only Unicode goes beyond 255
+        --0 to 31 are non-printable characters
+		--We also need to remove spaces which is 32
+        IF UNICODE(@sChar) between 33 and 255
+            SET @sResult = @sResult + @sChar
+        SET @nPosition = @nPosition + 1
+    END
+
+    RETURN @sResult
+
+END
+GO
+
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[fn_StripNonASCII]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
+	DROP FUNCTION [dbo].[fn_StripNonASCII]
+GO
+
+
+CREATE FUNCTION [dbo].[fn_StripNonASCII](@sStringWithASCII nvarchar(max))
+RETURNS varchar(max)
+
+AS
+-- Function :	fn_StripNonASCII
+-- VERSION :	1
+-- COPYRIGHT:	Copyright CPA Software Solutions (Australia) Pty Limited
+-- DESCRIPTION:	Strips out the non ASCII character and returns the remaining text.
+-- MODIFICATIONS :
+-- Date		Who	Change	Version	Description
+-- -----------	-------	------	-------	----------------------------------------------- 
+-- 12 Sep 2014	MF		1	Function created
+BEGIN
+
+    DECLARE @sResult	varchar(max)
+    DECLARE @sChar	nvarchar(1)
+    DECLARE @nPosition	int
+    
+    SET @sResult = ''
+
+    SET @nPosition = 1
+    
+    WHILE @nPosition <= LEN(@sStringWithASCII)
+    BEGIN
+        SET @sChar = SUBSTRING(@sStringWithASCII, @nPosition, 1)
+        --Unicode & ASCII are the same from 1 to 255.
+        --Only Unicode goes beyond 255
+        --0 to 31 are non-printable characters
+        IF UNICODE(@sChar) between 32 and 255
+            SET @sResult = @sResult + @sChar
+        SET @nPosition = @nPosition + 1
+    END
+
+    RETURN @sResult
+
+END
+GO
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_ADDRESS' AND TABLE_TYPE = N'BASE TABLE')
+  DROP TABLE [dbo].[Conv_ADDRESS]
+GO
+
+CREATE TABLE [dbo].[Conv_ADDRESS] (
+	ADDRESSCODE			int identity(-1,-1) not null,
+	BB_ADDRESSCODE		int not null, --GD_CST_CODE
+	STREET1				nvarchar(254) NULL,
+	STREET2				nvarchar(254) NULL,
+	CITY				nvarchar(30) NULL,
+	STATE				nvarchar(20) NULL,
+	POSTCODE			nvarchar(10) NULL,
+	COUNTRYCODE			nvarchar(3) NOT NULL, 
+)
+GO
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_TELECOM' AND TABLE_TYPE = N'BASE TABLE')
+  DROP TABLE [dbo].Conv_TELECOM
+GO
+
+CREATE TABLE [dbo].Conv_TELECOM (
+	TELECODE			int identity(-1,-1) not null,
+	TELECOMTYPE			int null,
+	TELECOMNUMBER		nvarchar(100) null,
+	NAMENO				int not null,
+
+)
+GO
+
+--select * from TELECOMMUNICATION
+--select * from LASTINTERNALCODE
+
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_NAME' AND TABLE_TYPE = N'BASE TABLE')
+  DROP TABLE [dbo].[Conv_NAME]
+GO
+
+CREATE TABLE [dbo].[Conv_NAME] (
+	NAMENO				int identity(-1,-1) not null,
+	NA_REFERENCE		nvarchar(6)  null,
+	NAMECODE			nvarchar(20) NULL,
+	ENTITYTYPE			nvarchar(1) NULL, -- 'O' Organisation, 'I' Individual
+	CLIENTINDICATOR		nvarchar(1) NULL, -- 'Y' for a client, 'N' otherwise
+	STAFFINDICATOR		nvarchar(1) NULL, -- 'Y' for a person employed by the installation client, 'N' otherwise
+	NAME				nvarchar(254) NULL,
+	FIRSTNAME           nvarchar(50) NULL,
+	TITLE               nvarchar(20) NULL,
+	INITIALS            nvarchar(10) NULL,
+	NATIONALITY			nvarchar(3) null,
+	CASUALSALUTATION    nvarchar  (40) NULL,
+	FORMALSALUTATION    nvarchar  (40) NULL,
+	ADDRESSCODE			int null,
+	SUPPLIERFLAG		decimal(1,0) null,
+	AGENTFLAG			decimal(1,0) null,
+	USEDASFLAG			smallint null,
+	SORTKEY1            nvarchar(20) NULL,
+	SORTKEY2            nvarchar(20) NULL,
+	REMARKS				nvarchar(254) null,
+	EMAIL				nvarchar(500) null --actually 100 but need to spit
+)
+GO
+
+IF EXISTS (SELECT 1 FROM sysindexes WHERE name = 'XIE_Conv_NAME_CONV01_MAIN')
+  DROP INDEX Conv_NAME.XIE_Conv_NAME_CONV01_MAIN;
+GO
+
+CREATE CLUSTERED INDEX XIE_Conv_NAME_CONV01_MAIN
+  ON Conv_NAME
+     (NA_REFERENCE);
+GO
+
+--IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_NAME' AND TABLE_TYPE = N'BASE TABLE')
+--  DROP TABLE [dbo].[Conv_NAME]
+--GO
+
+--CREATE TABLE [dbo].[Conv_NAME] (
+--	 NAMENO					int identity(-1,-1) not null,
+--	 OPID					nvarchar  (10) NULL,
+--	 PPID					int null,
+-- 	  [NAMECODE]           nvarchar  (10) NULL,
+--	 [ENTITYTYPE]         nvarchar   (1) NULL, -- 'O' Organisation, 'I' Individual
+-- 	 [CLIENTINDICATOR]    nvarchar   (1) NULL, -- 'Y' for a client, 'N' otherwise
+--	 [STAFFINDICATOR]     nvarchar   (1) NULL, -- 'Y' for a person employed by the installation client, 'N' otherwise
+--	 [NAME]               nvarchar (254) NULL,
+--	 [FIRSTNAME]          nvarchar  (50) NULL,
+--	 [TITLE]              nvarchar  (20) NULL,
+--	 [INITIALS]           nvarchar  (10) NULL,
+--	 [CASUALSALUTATION]   nvarchar  (40) NULL,
+--	 [FORMALSALUTATION]   nvarchar  (40) NULL,
+--	 [SORTKEY1]           nvarchar  (20) NULL,
+--	 [SORTKEY2]           nvarchar  (20) NULL,
+--	 [CORRADDRESSLINE1]   nvarchar (254) NULL,
+--	 [CORRADDRESSLINE2]   nvarchar (254) NULL,
+--	 [CORRADDRESSLINE3]   nvarchar  (50) NULL,
+--	 [CORRADDRESSLINE4]   nvarchar  (50) NULL,
+--	 [CORRADDRESSLINE5]   nvarchar  (54) NULL,
+--	 [CORRCITY]           nvarchar  (30) NULL,
+--	 [CORRSTATE]          nvarchar  (40) NULL,
+--	 [CORRPOSTCODE]       nvarchar  (10) NULL,
+--	 [CORRCOUNTRYCODE]    nvarchar   (3) NULL, -- into IMPORTNAMEWITHNO.CORRCOUNTRYCODE; map using Conv_Map_Country
+---- Amended 26/5/20
+--	 [STREETADDRESSLINE1] nvarchar (254) NULL,
+--	 [STREETADDRESSLINE2] nvarchar  (50) NULL,
+--	 [STREETADDRESSLINE3] nvarchar  (50) NULL,
+--	 [STREETADDRESSLINE4] nvarchar  (50) NULL,
+--	 [STREETADDRESSLINE5] nvarchar  (54) NULL,
+--	 [STREETCITY]         nvarchar  (30) NULL,
+--	 [STREETSTATE]        nvarchar  (40) NULL,
+--	 [STREETPOSTCODE]     nvarchar  (10) NULL,
+--	 [STREETCOUNTRYCODE]  nvarchar   (3) NULL, -- into IMPORTNAMEWITHNO.STREETCOUNTRYCODE; map using Conv_Map_Country
+--	 [MAINPHONECOUNTRY]   nvarchar   (5) NULL, -- Dialling Code; into IMPORTNAMEWITHNO.MAINPHONECOUNTRY; into TELECOMMUNICATION.ISD
+--	 [MAINPHONEAREA]      nvarchar   (5) NULL,
+--	 [MAINPHONENUMBER]    nvarchar  (50) NULL,
+--	 [MAINFAXCOUNTRY]     nvarchar   (5) NULL, -- Dialling Code; into IMPORTNAMEWITHNO.MAINFAXCOUNTRY; into TELECOMMUNICATION.ISD
+--	 [MAINFAXAREA]        nvarchar   (5) NULL,
+--	 [MAINFAXNUMBER]      nvarchar  (50) NULL,
+--	 [MOBILEPHONE]        nvarchar  (50) NULL,
+--	 [TELEX]              nvarchar (100) NULL,
+--	 [EMAIL]              nvarchar (100) NULL,
+--	 [HOMEPHONE]          nvarchar  (50) NULL,
+--	 [HOMEFAX]            nvarchar  (50) NULL,
+--	 [WEBSITE]            nvarchar (100) NULL,
+--	 [REGISTRATIONNO]     nvarchar  (30) NULL,
+--  [VATNO]              nvarchar  (30) NULL, -- into IMPORTNAMEWITHNO.VATNO; into ORGANISATION.VATNO
+--	 [REMARKS]            nvarchar (254) NULL,
+--  [STATECODE]          nvarchar   (3) NULL,
+--  [CURRENCY]           nvarchar   (3) NULL,
+--  [INCORPORATEDIN]     nvarchar (254) NULL,
+--  [SHORTNAME]          nvarchar  (10) NULL,
+--  [POSITIONTITLE]      nvarchar  (50) NULL,
+--  [JOBTYPE]            nvarchar  (80) NULL, -- into IMPORTNAMEWITHNO.JOBTYPE; into EMPLOYEE.STAFFCLASS
+--  [EXTENSION]          nvarchar  (10) NULL,
+--  [HIREDATE]           datetime       NULL,
+--  [EXTENDEDNAME]       nvarchar  (50) NULL,
+--  [XMASCARD]           nvarchar   (1) NULL,
+--  [NEWSLETTER]         nvarchar   (1) NULL,
+--  [GENDER]             nvarchar   (1) NULL,
+--  [OFFICE]             nvarchar  (80) NULL, -- into IMPORTNAMEWITHNO.OFFICE
+--  [DATEENTERED]        datetime       NULL,
+--  [DATECHANGED]        datetime       NULL,
+--  [DATECEASED]         datetime       NULL,
+--  [SUPPLIERINDICATOR]  nvarchar   (1) NULL,
+--  [AGENTINDICATOR]     nvarchar   (1) NULL,
+---- Added 23/5/20
+--	 [HOMEADDRESSLINE1]   nvarchar (254) NULL,
+--	 [HOMEADDRESSLINE2]   nvarchar (254) NULL,
+--	 [HOMEADDRESSLINE3]   nvarchar  (50) NULL,
+--	 [HOMEADDRESSLINE4]   nvarchar  (50) NULL,
+--	 [HOMEADDRESSLINE5]   nvarchar  (54) NULL,
+--	 [HOMECITY]           nvarchar  (30) NULL,
+--	 [HOMESTATE]          nvarchar  (40) NULL,
+--	 [HOMEPOSTCODE]       nvarchar  (10) NULL,
+--	 [HOMECOUNTRYCODE]    nvarchar   (3) NULL,
+--	 [HOMEEMAIL]          nvarchar (100) NULL,
+--	 [PHONE]              nvarchar  (50) NULL
+--)
+--GO
+
+
+if exists (select * from INFORMATION_SCHEMA.TABLES where TABLE_NAME = 'Conv_MappingCases')
+	drop table Conv_MappingCases
+go
+
+
+
+create table  Conv_MappingCases (
+			CASEID				int identity(1,-1) not null,
+			BB_CASE_REF			varchar(20) not null,
+			IRN				nvarchar (150) not null,
+			STEM				nvarchar(50) null,
+			FAMILY				nvarchar(20) null,
+			CASETYPE			nvarchar (1) not null,
+			PROPERTYTYPE			nvarchar(100) not null,
+			CASECATEGORY			nvarchar(100) null,
+			SUBTYPE				nvarchar(100) null,
+			COUNTRYCODE			nvarchar(100) null,
+			BASIS				nvarchar(10) null,
+			CASESTATUS			int null,
+			RENEWALSTATUS			int null,
+			TITLE				nvarchar(max) null,
+			APPNO				nvarchar(100) null,
+			FILINGDATE			datetime null,
+			REGNO				nvarchar(100) null,
+			GRANTDATE			datetime null,
+			PUBNO				nvarchar(100) null,
+			PUBDATE				datetime null,
+			ALLOWANCEDATE			datetime null,
+			EARLIESTPRIORITYDATE		datetime null,
+			CONFIRMATIONNO			nvarchar(100) null,
+			PCTAPPNO			nvarchar(100) null,
+			ENTITYSIZE			int null,
+			LOCALCLASSES			nvarchar(254) null,
+			INTCLASSES			nvarchar(254) null,
+			TYPEOFMARK			smallint,
+			OFFICEID			int null,
+			LIVEFLAG			nvarchar(1) null,
+			PURCHASEORDERNO		nvarchar(80) null
+		primary key (CASEID)
+			)
+go
+
+IF EXISTS (SELECT 1 FROM sysindexes WHERE name = 'XIE_Conv_MappingCases_CONV01_MAIN')
+  DROP INDEX Conv_MappingCases.XIE_Conv_MappingCases_CONV01_MAIN;
+GO
+
+CREATE INDEX XIE_Conv_MappingCases_CONV01_MAIN
+  ON Conv_MappingCases
+     (BB_CASE_REF);
+GO
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_NAMETYPEMAP')
+  DROP TABLE dbo.Conv_NAMETYPEMAP
+GO
+
+create table Conv_NAMETYPEMAP (
+		BB_NAMETYPE				nvarchar(8) not null,
+		NAMETYPE				nvarchar(3) null,
+		--NAMETYPEDESC			nvarchar(50) null,
+		SPECIALMAPPING			nvarchar(20) null,	
+		NOTES					nvarchar(100) null)
+go
+
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_EVENTTEXTMAP' AND TABLE_TYPE = N'BASE TABLE')
+  DROP TABLE [dbo].Conv_EVENTTEXTMAP
+GO
+
+CREATE TABLE [dbo].Conv_EVENTTEXTMAP (
+	EVENTTEXTID			int identity(-1,-1) not null,
+	--BB_EVENTTEXTID		int not null,
+	EVENTTEXT			nvarchar(max),
+	CASEID				int,
+	EVENTNO				int,
+	cycle				smallint
+)
+GO
+
+--if object_id('Conv_TitleMapSafe') is not null
+--   drop function Conv_TitleMapSafe;
+--GO
+--create function Conv_TitleMapSafe()
+--   returns table as
+--return
+--   select 
+--      NamePrefix, 
+--      Title
+--   from
+--      ( values 
+--         ('Monsieur', 'Monsieur'),
+--         ('Mr.', 'Mr.'),
+--         ('De heer', 'De heer'),
+--         ('Madame', 'Madame'),
+--         ('Mrs.', 'Mrs'),
+--         ('Mevrouw', 'Mevrouw'),
+--         ('Mr', 'Mr'),
+--         ('Ms.', 'Ms'),
+--         ('Mrs', 'Mrs'),
+--         ('Ms', 'Ms'),
+--         ('Mme', 'Mme'),
+--         ('Maître', 'Maître'),
+--         ('Dr.', 'Dr.'),
+--         ('Sir', 'Sir'),
+--         ('Dhr.', 'Dhr.'),
+--         ('Meester', 'Meester'),
+--         ('Miss', 'Miss'),
+--         ('Docteur', 'Docteur'),
+--         ('Mevr.', 'Mevr.'),
+--         ('Meneer', 'Meneer'),
+--         ('Mme.', 'Mme'),
+--         ('Dr', 'Dr'),
+--         ('Mlle', 'Mlle'),
+--         ('Prof.', 'Prof.'),
+--         ('Mister', 'Mister'),
+--         ('Dipl.-Ing.', 'Dipl.-Ing.'),
+--         ('Herr', 'Herr'),
+--         ('Prof. Dr.', 'Prof. Dr.'),
+--         ('Mevouw', 'Mevrouw'),
+--         ('Dear Mr.', 'Mr.'),
+--         ('Merouw', 'Mevrouw'),
+--         ('Monisuer', 'Monsieur'),
+--         ('Dipl.Ing.', 'Dipl. ing.'),
+--         ('MS;', 'Ms'),
+--         ('Mrs,', 'Mrs'),
+--         ('Mervouw', 'Mevrouw'),
+--         ('Dhr', 'Dhr.'),
+--         ('Ing.', 'Ing.'),
+--         ('Madame.', 'Madame'),
+--         ('Monseur', 'Monsieur'),
+--         ('Mr,', 'Mr.'),
+--         ('Ms,', 'Ms'),
+--         ('Me.', 'Maître'),
+--         ('Sr.', 'Sir'),
+--         ('Legal - Meester', 'Meester'),
+--         ('Mevr. en Dhr.', 'Mevr. en Dhr.')
+--      ) as Titles(NamePrefix, Title)
+--GO
+
+--IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'CONV_DocketMap')
+--  DROP TABLE dbo.CONV_DocketMap
+--GO
+
+--create table CONV_DocketMap
+--	 (ACTIVITYCODE			nvarchar(100) null, 
+--	 TASKCODE				nvarchar(100) null,
+--	 TASKDESCRIPTION  		nvarchar(100) null,
+--	 EVENTNO				int null,
+--	 EVENTDESC				nvarchar(100) null, 
+--	 SPECIALMAPPING			nvarchar(100) null,
+--	 COMMENT 				nvarchar(100) null)
+--go
+
+--IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'CONV_ProcessMap')
+--  DROP TABLE dbo.CONV_ProcessMap
+--GO
+
+--create table CONV_ProcessMap
+--	 (TASKCODE				nvarchar(100) null,
+--	 TASKDESCRIPTION  		nvarchar(100) null,
+--	 EVENTNO				int null,
+--	 EVENTDESC				nvarchar(100) null, 
+--	 SPECIALMAPPING			nvarchar(100) null)
+--go
+
+--CONVERTED DATES
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_CONVERTEDEVENTS' AND TABLE_TYPE = N'BASE TABLE')
+  DROP TABLE [dbo].Conv_CONVERTEDEVENTS
+GO
+
+CREATE TABLE [dbo].Conv_CONVERTEDEVENTS (
+	EVENTNO			int identity(1,1) not null,
+	SY_EVENTNO		int not null
+)
+GO
+
+--STANDING INSTRUCTIONS
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_INSTRUCTIONSMAP' AND TABLE_TYPE = N'BASE TABLE')
+  DROP TABLE [dbo].Conv_INSTRUCTIONSMAP
+GO
+
+CREATE TABLE [dbo].Conv_INSTRUCTIONSMAP (
+	SY_INSTRUCTIONCODE			smallint not null,
+	SY_INSTRUCTIONTYPE			nvarchar(3) not null,
+	SY_DESCRIPTION				nvarchar(50) not null,
+	INSTRUCTIONCODE				smallint not null,
+	INSTRUCTIONTYPE				nvarchar(3) not null,
+	DESCRIPTION					nvarchar(50) not null
+)
+GO
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_TABLECODESMAP')
+  DROP TABLE dbo.Conv_TABLECODESMAP
+GO
+
+create table Conv_TABLECODESMAP (
+		SY_TABLECODE			int not null,
+		SY_TABLETYPE			smallint not null,
+		SY_DESCRIPTION			nvarchar(80) not null,
+		TABLECODE				int not null,
+		TABLETYPE				smallint not null,
+		DESCRIPTION				nvarchar(80) not null,
+		SPECIALMAPPING			nvarchar(20) null,	
+		NOTES					nvarchar(100) null)
+go
+
+
+
+
+--CHECKLISTS
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_QUESTIONMAP')
+  DROP TABLE dbo.Conv_QUESTIONMAP
+GO
+
+create table Conv_QUESTIONMAP (
+		SY_QUESTIONNO				smallint not null,
+		QUESTIONNO				smallint not null,
+		SPECIALMAPPING				nvarchar(20) null,	
+		NOTES					nvarchar(100) null)
+go
+
+--IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_CHECKLISTMAP')
+--  DROP TABLE dbo.Conv_CHECKLISTMAP
+--GO
+
+--create table Conv_CHECKLISTMAP (
+--		SY_CHECKLISTTYPE		smallint not null,
+--		CHECKLISTTYPE			smallint not null,
+--		SPECIALMAPPING			nvarchar(20) null,	
+--		NOTES					nvarchar(100) null)
+--go
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_NAMEFAMILYMAP' AND TABLE_TYPE = N'BASE TABLE')
+  DROP TABLE [dbo].Conv_NAMEFAMILYMAP
+GO
+
+CREATE TABLE [dbo].Conv_NAMEFAMILYMAP (
+	SY_FAMILYNO		smallint not null,
+	SY_FAMILYTITLE		nvarchar(50) null,
+	FAMILYNO		smallint not null,
+	FAMILYTITLE		nvarchar(50) null,
+	SPECIALMAPPING		nvarchar(20) null,	
+	NOTES			nvarchar(100) null	
+)
+GO
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_TAXRATESMAP' AND TABLE_TYPE = N'BASE TABLE')
+  DROP TABLE [dbo].Conv_TAXRATESMAP
+GO
+
+CREATE TABLE [dbo].Conv_TAXRATESMAP (
+	SY_TAXCODE		nvarchar(3) not null,
+	SY_DESCRIPTION		nvarchar(30) null,
+	TAXCODE			nvarchar(3) not null,
+	DESCRIPTION		nvarchar(30) null,
+	SPECIALMAPPING		nvarchar(20) null,	
+	NOTES			nvarchar(100) null	
+)
+GO
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_DEBTORSTATUSMAP' AND TABLE_TYPE = N'BASE TABLE')
+  DROP TABLE [dbo].Conv_DEBTORSTATUSMAP
+GO
+
+CREATE TABLE [dbo].Conv_DEBTORSTATUSMAP (
+	SY_BADDEBTOR		smallint not null,
+	SY_DEBTORSTATUS		nvarchar(50) null,
+	BADDEBTOR		smallint not null,
+	DEBTORSTATUS		nvarchar(50) null,
+	SPECIALMAPPING		nvarchar(20) null,	
+	NOTES			nvarchar(100) null	
+)
+GO
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_PROFITCENTREMAP' AND TABLE_TYPE = N'BASE TABLE')
+  DROP TABLE [dbo].Conv_PROFITCENTREMAP
+GO
+
+CREATE TABLE [dbo].Conv_PROFITCENTREMAP (
+	SY_PROFITCENTRECODE	nvarchar(6) not null,
+	SY_ENTITYNO		int not null,
+	SY_DESCRIPTION		nvarchar(50) null,
+	PROFITCENTRECODE	nvarchar(6) not null,	
+	ENTITYNO		int not null,
+	DESCRIPTION		nvarchar(50) null,
+	SPECIALMAPPING		nvarchar(20) null,	
+	NOTES			nvarchar(100) null	
+)
+GO
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_COUNTRYFLAGSMAP' AND TABLE_TYPE = N'BASE TABLE')
+  DROP TABLE [dbo].Conv_COUNTRYFLAGSMAP
+GO
+
+CREATE TABLE [dbo].Conv_COUNTRYFLAGSMAP (
+	SY_COUNTRYCODE		nvarchar(3) not null,
+	SY_FLAGNUMBER		int not null,
+	SY_FLAGNAME		nvarchar(30) null,
+	COUNTRYCODE		nvarchar(3) not null,	
+	FLAGNUMBER		int not null,
+	FLAGNAME		nvarchar(30) null,
+	SPECIALMAPPING		nvarchar(20) null,	
+	NOTES			nvarchar(100) null	
+)
+GO
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_WIPCODEMAP' AND TABLE_TYPE = N'BASE TABLE')
+  DROP TABLE [dbo].Conv_WIPCODEMAP
+GO
+
+CREATE TABLE [dbo].Conv_WIPCODEMAP (
+	SY_WIPCODE		nvarchar(6) not null,
+	SY_DESCRIPTION		nvarchar(30) null,
+	WIPCODE			nvarchar(6) not null,
+	DESCRIPTION		nvarchar(30) null,
+	SPECIALMAPPING		nvarchar(20) null,	
+	NOTES			nvarchar(100) null	
+)
+GO
+
+
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Conv_IMAGES' AND TABLE_TYPE = N'BASE TABLE')
+  DROP TABLE [dbo].Conv_IMAGES
+GO
+
+CREATE TABLE [dbo].Conv_IMAGES (
+	IMAGEID			int identity(-1,-1) not null,
+	APPS_USER_REF	varchar(20)  null,
+	CASE_REF		varchar(20)  null,
+	PATH			nvarchar(254) null,
+	UNC				nvarchar(254) null,
+	FILENAME		nvarchar(100) null
+)
+GO
