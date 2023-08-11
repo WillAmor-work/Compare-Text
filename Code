@@ -1,33 +1,148 @@
-use EMEABB
-go
-
-disable trigger [tU_CASES_Classes] on CASES
-go
-disable trigger [ti_CASES_Classes] on CASES
-go
-
-disable trigger [tI_OFFICIALNUMBERS2] on OFFICIALNUMBERS  
-go
-disable trigger [CPAFieldsInsertedOnOfficialNo] on OFFICIALNUMBERS  
-go
-disable trigger [tU_OFFICIALNUMBERS2] on OFFICIALNUMBERS 
-go
-
-IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'TempAuditLogTables')
-  DROP TABLE dbo.TempAuditLogTables
+USE EMEABB;
 GO
 
-create table TempAuditLogTables
-(
-	[TABLENAME] [nvarchar](50) NOT NULL,
-	[LOGFLAG] [bit] NOT NULL,
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = N'APPS_DN_Normalised' AND TABLE_TYPE = N'BASE TABLE')
+  DROP TABLE APPS_DN_Normalised;
+GO
+
+CREATE TABLE APPS_DN_Normalised
+( CASE_REF			varchar (20) NOT NULL,
+  APPS_CASE_TYPE	varchar  (1) NULL,
+  IC_CODE			varchar  (8) NULL,
+  IC_NOS_DESC		varchar (15) NULL,
+  APPS_DN_DATE		datetime     NULL,
+  APPS_DN_NO		varchar (20) NULL,
+  ColumnNumber		tinyint      NULL
 );
-
-insert into TempAuditLogTables (TableName, LogFlag)
-select TableName, LogFlag from AUDITLOGTABLES;
-
-update AUDITLOGTABLES
-   set LogFlag = 0;
 GO
 
---3:21
+IF EXISTS (SELECT 1 FROM sysindexes WHERE name = 'XIE_APPS_DN_Normalised_CONV01_MAIN')
+  DROP INDEX APPS_DN_Normalised.XIE_APPS_DN_Normalised_CONV01_MAIN;
+GO
+
+CREATE CLUSTERED INDEX XIE_APPS_DN_Normalised_CONV01_MAIN
+  ON APPS_DN_Normalised
+     (APPS_CASE_TYPE, --1:+
+      IC_CODE,        --1:+
+	  CASE_REF,
+      IC_NOS_DESC);
+GO
+
+TRUNCATE TABLE APPS_DN_Normalised;
+GO
+
+-------------------------------------------------------------------------------
+-- Populate table APPS_DN_Normalised with a normalised view of the data in
+-- APPS_DN.
+-------------------------------------------------------------------------------
+
+DECLARE
+  @ColumnNo tinyint,
+  @SQLStr   nvarchar (4000);
+
+SET @ColumnNo = 1;
+
+WHILE @ColumnNo <= 26
+BEGIN
+
+  SET @SQLStr =
+N'INSERT INTO APPS_DN_Normalised
+( CASE_REF,
+  APPS_CASE_TYPE,
+  IC_CODE,
+  IC_NOS_DESC,
+  APPS_DN_DATE,
+  APPS_DN_NO,
+  ColumnNumber
+)
+SELECT
+  a.CASE_REF,
+  aa.APPS_CASE_TYPE,
+  aa.IC_CODE,
+  CASE
+    WHEN i.IC_NOS_DESC' + CONVERT (nvarchar (3), @ColumnNo) + N' = N''''
+    THEN NULL
+    ELSE i.IC_NOS_DESC' + CONVERT (nvarchar (3), @ColumnNo) + N'
+  END AS IC_NOS_DESC' + CONVERT (nvarchar (3), @ColumnNo) + N',
+  APPS_DN_DATE' + CONVERT (nvarchar (3), @ColumnNo) + N',
+  LTRIM (RTRIM (CASE
+    WHEN APPS_DN_NO' + CONVERT (nvarchar (3), @ColumnNo) + N' = N''''
+    THEN NULL
+    ELSE APPS_DN_NO' + CONVERT (nvarchar (3), @ColumnNo) + N'
+  END)) AS APPS_DN_NO' + CONVERT (nvarchar (3), @ColumnNo) + N',
+  ' + CONVERT (nvarchar (3), @ColumnNo) + N' AS ColumnNumber
+FROM
+  BB..APPS_DN a
+  JOIN BB..APPSALL aa
+    ON (a.CASE_REF = aa.CASE_REF AND 
+        (APPS_DN_DATE' + CONVERT (nvarchar (3), @ColumnNo) + N' IS NOT NULL OR                           
+         LTRIM (RTRIM (ISNULL (APPS_DN_NO' + CONVERT (nvarchar (3), @ColumnNo) + N', N''''))) <> N'''')) 
+  JOIN BB..IC_NOS i 
+    ON (aa.IC_CODE = i.IC_CODE_NOS AND
+        aa.APPS_CASE_TYPE = i.IC_TYPE_NOS)
+  ;
+';
+
+  PRINT @SQLStr;
+
+  EXECUTE (@SQLStr);
+
+  SET @ColumnNo = @ColumnNo + 1;
+
+END; -- while: @ColumnNo <= 26
+GO
+
+/*
+
+select distinct APPS_CASE_TYPE,IC_CODE, ColumnNumber,IC_NOS_DESC from APPS_DN_Normalised 
+where IC_NOS_DESC like 'Local%'
+order by 3
+
+---Numbertypes mapping tab
+select --distinct 
+	APPS_CASE_TYPE,--IC_CODE,
+	IC_NOS_DESC,
+	ColumnNumber ,
+	count(*) as [Count]
+from APPS_DN_Normalised 
+where APPS_DN_NO is not null
+group by 
+	APPS_CASE_TYPE,
+	IC_NOS_DESC,
+	ColumnNumber 
+order by 2,1,3
+
+--Mapping Tab - Events - APPS_DN
+select 
+	APPS_CASE_TYPE,
+	IC_CODE,
+	IC_NOS_DESC,
+	ColumnNumber,
+	count(*) as [Count]
+from APPS_DN_Normalised 
+--where IC_NOS_DESC like 'Local%'
+--where IC_NOS_DESC is not null
+group by 
+	APPS_CASE_TYPE,
+	IC_CODE,
+	IC_NOS_DESC,
+	ColumnNumber
+order by 3,1,2
+
+select * from APPS_DN_Normalised where ColumnNumber in (6,7) and APPS_DN_NO is not null and IC_CODE = 'AR'
+
+select * from APPS_DN_Normalised where APPS_DN_NO is not null
+
+
+select * from APPSALL
+where CASE_REF = 'D084315.GBN-EMX' 
+
+select * from IC_NOS where IC_CODE_NOS = 'GB-EMX'
+
+select * from APPS_DN
+where CASE_REF = 'D084315.GBN-EMX' 
+
+
+D038338.ARP2        number 7
+D038338.ARP2        no number 1
+*/
