@@ -1,148 +1,124 @@
 USE EMEABB;
 GO
 
-IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = N'APPS_DN_Normalised' AND TABLE_TYPE = N'BASE TABLE')
-  DROP TABLE APPS_DN_Normalised;
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = N'Conv_DY_MAJ_Normalised' AND TABLE_TYPE = N'BASE TABLE')
+  DROP TABLE Conv_DY_MAJ_Normalised;
 GO
 
-CREATE TABLE APPS_DN_Normalised
-( CASE_REF			varchar (20) NOT NULL,
-  APPS_CASE_TYPE	varchar  (1) NULL,
-  IC_CODE			varchar  (8) NULL,
-  IC_NOS_DESC		varchar (15) NULL,
-  APPS_DN_DATE		datetime     NULL,
-  APPS_DN_NO		varchar (20) NULL,
-  ColumnNumber		tinyint      NULL
-);
-GO
+select
+  c.CASE_REF,
+  ce.MAJ_TEXT3,
+  ce.MAJ_DON,
+  ce.MAJ_TRK_ID,
+  t.TRK_TXT1,
+  ce.MAJ_TRK_STEP_COMP1,
+  t.TRK_TXT2,
+  ce.MAJ_TRK_STEP_COMP2,
+  t.TRK_TXT3,
+  ce.MAJ_TRK_STEP_COMP3,
+  t.TRK_TXT4,
+  ce.MAJ_TRK_STEP_COMP4,
+  t.TRK_TXT5,
+  ce.MAJ_TRK_STEP_COMP5,
+  t.TRK_TXT6,
+  ce.MAJ_TRK_STEP_COMP6,
+  t.TRK_TXT7,
+  ce.MAJ_TRK_STEP_COMP7,
+  t.TRK_TXT8,
+  ce.MAJ_TRK_STEP_COMP8,
+  t.TRK_TXT9,
+  ce.MAJ_TRK_STEP_COMP9,
+  t.TRK_TXT10,
+  ce.MAJ_TRK_STEP_COMP10,
+  'MAJ_OA_Date' as OA_Date,
+  ce.MAJ_OA_DATE,
+  'MAJ_OA_Received' as OA_Received,
+  ce.MAJ_OA_RECEIVED,
+  c2.COUNTRY_CODE,
+	c.APPS_CASE_TYPE,
+	c.IC_CODE,
+	ce.MAJ_SEQ,
+	LTRIM(RTRIM(ce.MAJ_TEXT3))+
+	CASE WHEN ce.MAJ_TEXT1 != '' THEN CHAR(13)+CHAR(10)+LTRIM(RTRIM(ce.MAJ_TEXT1)) ELSE '' END+
+	CASE WHEN ce.MAJ_TEXT2 != '' THEN CHAR(13)+CHAR(10)+LTRIM(RTRIM(ce.MAJ_TEXT2)) ELSE '' END+
+	CASE WHEN ce.MAJ_TEXT4 != '' THEN CHAR(13)+CHAR(10)+LTRIM(RTRIM(ce.MAJ_TEXT4)) ELSE '' END as NOTES
+into #temp_event_extract
+from
+  BB..APPSALL c
+  join BB..APPSALL2 c2 on c2.CASE_REF = c.CASE_REF
+  join BB..DY_MAJ ce on ce.MAJ_CASE_REF = c.CASE_REF
+  join BB..TRACKS t on t.TRK_ID = ce.MAJ_TRK_ID
+where
+  ce.MAJ_TYPE != 'K'
+--  c.APPS_CASE_TYPE = 'P'
+--  and c2.COUNTRY_CODE = 'EP'
 
-IF EXISTS (SELECT 1 FROM sysindexes WHERE name = 'XIE_APPS_DN_Normalised_CONV01_MAIN')
-  DROP INDEX APPS_DN_Normalised.XIE_APPS_DN_Normalised_CONV01_MAIN;
-GO
+--select * from #temp_event_extract
 
-CREATE CLUSTERED INDEX XIE_APPS_DN_Normalised_CONV01_MAIN
-  ON APPS_DN_Normalised
-     (APPS_CASE_TYPE, --1:+
-      IC_CODE,        --1:+
-	  CASE_REF,
-      IC_NOS_DESC);
-GO
+--drop table conv_DY_MAJ_Normalised
 
-TRUNCATE TABLE APPS_DN_Normalised;
-GO
-
--------------------------------------------------------------------------------
--- Populate table APPS_DN_Normalised with a normalised view of the data in
--- APPS_DN.
--------------------------------------------------------------------------------
-
-DECLARE
-  @ColumnNo tinyint,
-  @SQLStr   nvarchar (4000);
-
-SET @ColumnNo = 1;
-
-WHILE @ColumnNo <= 26
-BEGIN
-
-  SET @SQLStr =
-N'INSERT INTO APPS_DN_Normalised
-( CASE_REF,
-  APPS_CASE_TYPE,
-  IC_CODE,
-  IC_NOS_DESC,
-  APPS_DN_DATE,
-  APPS_DN_NO,
-  ColumnNumber
-)
-SELECT
-  a.CASE_REF,
-  aa.APPS_CASE_TYPE,
-  aa.IC_CODE,
-  CASE
-    WHEN i.IC_NOS_DESC' + CONVERT (nvarchar (3), @ColumnNo) + N' = N''''
-    THEN NULL
-    ELSE i.IC_NOS_DESC' + CONVERT (nvarchar (3), @ColumnNo) + N'
-  END AS IC_NOS_DESC' + CONVERT (nvarchar (3), @ColumnNo) + N',
-  APPS_DN_DATE' + CONVERT (nvarchar (3), @ColumnNo) + N',
-  LTRIM (RTRIM (CASE
-    WHEN APPS_DN_NO' + CONVERT (nvarchar (3), @ColumnNo) + N' = N''''
-    THEN NULL
-    ELSE APPS_DN_NO' + CONVERT (nvarchar (3), @ColumnNo) + N'
-  END)) AS APPS_DN_NO' + CONVERT (nvarchar (3), @ColumnNo) + N',
-  ' + CONVERT (nvarchar (3), @ColumnNo) + N' AS ColumnNumber
-FROM
-  BB..APPS_DN a
-  JOIN BB..APPSALL aa
-    ON (a.CASE_REF = aa.CASE_REF AND 
-        (APPS_DN_DATE' + CONVERT (nvarchar (3), @ColumnNo) + N' IS NOT NULL OR                           
-         LTRIM (RTRIM (ISNULL (APPS_DN_NO' + CONVERT (nvarchar (3), @ColumnNo) + N', N''''))) <> N'''')) 
-  JOIN BB..IC_NOS i 
-    ON (aa.IC_CODE = i.IC_CODE_NOS AND
-        aa.APPS_CASE_TYPE = i.IC_TYPE_NOS)
-  ;
-';
-
-  PRINT @SQLStr;
-
-  EXECUTE (@SQLStr);
-
-  SET @ColumnNo = @ColumnNo + 1;
-
-END; -- while: @ColumnNo <= 26
-GO
-
-/*
-
-select distinct APPS_CASE_TYPE,IC_CODE, ColumnNumber,IC_NOS_DESC from APPS_DN_Normalised 
-where IC_NOS_DESC like 'Local%'
+--drop table #temp_caseevents
+--select CASE_REF, COUNTRY_CODE, MAJ_TEXT3 as [eventdesc], MAJ_DON as [eventdate] into #temp_caseevents from #temp_event_extract where MAJ_DON is not null
+--union
+select LTRIM(RTRIM(CASE_REF)) as [CASE_REF], LTRIM(RTRIM(COUNTRY_CODE)) as [COUNTRY_CODE], LTRIM(RTRIM(MAJ_TRK_ID)) as [MAJ_TRK_ID], LTRIM(RTRIM(MAJ_TEXT3)) + ': ' + LTRIM(RTRIM(TRK_TXT1)) as [eventdesc], MAJ_TRK_STEP_COMP1 as [eventdate]  , APPS_CASE_TYPE,IC_CODE, NOTES, LTRIM(RTRIM(MAJ_TEXT3)) as MAJ_TEXT3, LTRIM(RTRIM(TRK_TXT1)) as TRK_TXT, MAJ_SEQ, MAJ_DON
+into Conv_DY_MAJ_Normalised 
+from #temp_event_extract where MAJ_TRK_STEP_COMP1 is not null
+union																																																    
+select LTRIM(RTRIM(CASE_REF)) as [CASE_REF], LTRIM(RTRIM(COUNTRY_CODE)) as [COUNTRY_CODE], LTRIM(RTRIM(MAJ_TRK_ID)) as [MAJ_TRK_ID], LTRIM(RTRIM(MAJ_TEXT3)) + ': ' + LTRIM(RTRIM(TRK_TXT2)) as [eventdesc], MAJ_TRK_STEP_COMP2 as [eventdate]  , APPS_CASE_TYPE,IC_CODE, NOTES, LTRIM(RTRIM(MAJ_TEXT3)) as MAJ_TEXT3, LTRIM(RTRIM(TRK_TXT2)) as TRK_TXT, MAJ_SEQ, MAJ_DON   from #temp_event_extract where MAJ_TRK_STEP_COMP2 is not null
+union																																																    																											 					
+select LTRIM(RTRIM(CASE_REF)) as [CASE_REF], LTRIM(RTRIM(COUNTRY_CODE)) as [COUNTRY_CODE], LTRIM(RTRIM(MAJ_TRK_ID)) as [MAJ_TRK_ID], LTRIM(RTRIM(MAJ_TEXT3)) + ': ' + LTRIM(RTRIM(TRK_TXT3)) as [eventdesc], MAJ_TRK_STEP_COMP3 as [eventdate]  , APPS_CASE_TYPE,IC_CODE, NOTES, LTRIM(RTRIM(MAJ_TEXT3)) as MAJ_TEXT3, LTRIM(RTRIM(TRK_TXT3)) as TRK_TXT, MAJ_SEQ, MAJ_DON   from #temp_event_extract where MAJ_TRK_STEP_COMP3 is not null
+union																																																     																											 					
+select LTRIM(RTRIM(CASE_REF)) as [CASE_REF], LTRIM(RTRIM(COUNTRY_CODE)) as [COUNTRY_CODE], LTRIM(RTRIM(MAJ_TRK_ID)) as [MAJ_TRK_ID], LTRIM(RTRIM(MAJ_TEXT3)) + ': ' + LTRIM(RTRIM(TRK_TXT4)) as [eventdesc], MAJ_TRK_STEP_COMP4 as [eventdate]  , APPS_CASE_TYPE,IC_CODE, NOTES, LTRIM(RTRIM(MAJ_TEXT3)) as MAJ_TEXT3, LTRIM(RTRIM(TRK_TXT4)) as TRK_TXT, MAJ_SEQ, MAJ_DON   from #temp_event_extract where MAJ_TRK_STEP_COMP4 is not null
+union																																																    																											  					
+select LTRIM(RTRIM(CASE_REF)) as [CASE_REF], LTRIM(RTRIM(COUNTRY_CODE)) as [COUNTRY_CODE], LTRIM(RTRIM(MAJ_TRK_ID)) as [MAJ_TRK_ID], LTRIM(RTRIM(MAJ_TEXT3)) + ': ' + LTRIM(RTRIM(TRK_TXT5)) as [eventdesc], MAJ_TRK_STEP_COMP5 as [eventdate]  , APPS_CASE_TYPE,IC_CODE, NOTES, LTRIM(RTRIM(MAJ_TEXT3)) as MAJ_TEXT3, LTRIM(RTRIM(TRK_TXT5)) as TRK_TXT, MAJ_SEQ, MAJ_DON   from #temp_event_extract where MAJ_TRK_STEP_COMP5 is not null
+union																																																    																											  					
+select LTRIM(RTRIM(CASE_REF)) as [CASE_REF], LTRIM(RTRIM(COUNTRY_CODE)) as [COUNTRY_CODE], LTRIM(RTRIM(MAJ_TRK_ID)) as [MAJ_TRK_ID], LTRIM(RTRIM(MAJ_TEXT3)) + ': ' + LTRIM(RTRIM(TRK_TXT6)) as [eventdesc], MAJ_TRK_STEP_COMP6 as [eventdate]  , APPS_CASE_TYPE,IC_CODE, NOTES, LTRIM(RTRIM(MAJ_TEXT3)) as MAJ_TEXT3, LTRIM(RTRIM(TRK_TXT6)) as TRK_TXT, MAJ_SEQ, MAJ_DON   from #temp_event_extract where MAJ_TRK_STEP_COMP6 is not null
+union																																																    																											  					
+select LTRIM(RTRIM(CASE_REF)) as [CASE_REF], LTRIM(RTRIM(COUNTRY_CODE)) as [COUNTRY_CODE], LTRIM(RTRIM(MAJ_TRK_ID)) as [MAJ_TRK_ID], LTRIM(RTRIM(MAJ_TEXT3)) + ': ' + LTRIM(RTRIM(TRK_TXT7)) as [eventdesc], MAJ_TRK_STEP_COMP7 as [eventdate]  , APPS_CASE_TYPE,IC_CODE, NOTES, LTRIM(RTRIM(MAJ_TEXT3)) as MAJ_TEXT3, LTRIM(RTRIM(TRK_TXT7)) as TRK_TXT, MAJ_SEQ, MAJ_DON   from #temp_event_extract where MAJ_TRK_STEP_COMP7 is not null
+union																																																    																											  					
+select LTRIM(RTRIM(CASE_REF)) as [CASE_REF], LTRIM(RTRIM(COUNTRY_CODE)) as [COUNTRY_CODE], LTRIM(RTRIM(MAJ_TRK_ID)) as [MAJ_TRK_ID], LTRIM(RTRIM(MAJ_TEXT3)) + ': ' + LTRIM(RTRIM(TRK_TXT8)) as [eventdesc], MAJ_TRK_STEP_COMP8 as [eventdate]  , APPS_CASE_TYPE,IC_CODE, NOTES, LTRIM(RTRIM(MAJ_TEXT3)) as MAJ_TEXT3, LTRIM(RTRIM(TRK_TXT8)) as TRK_TXT, MAJ_SEQ, MAJ_DON   from #temp_event_extract where MAJ_TRK_STEP_COMP8 is not null
+union																																																     																											  					
+select LTRIM(RTRIM(CASE_REF)) as [CASE_REF], LTRIM(RTRIM(COUNTRY_CODE)) as [COUNTRY_CODE], LTRIM(RTRIM(MAJ_TRK_ID)) as [MAJ_TRK_ID], LTRIM(RTRIM(MAJ_TEXT3)) + ': ' + LTRIM(RTRIM(TRK_TXT9)) as [eventdesc], MAJ_TRK_STEP_COMP9 as [eventdate]  , APPS_CASE_TYPE,IC_CODE, NOTES, LTRIM(RTRIM(MAJ_TEXT3)) as MAJ_TEXT3, LTRIM(RTRIM(TRK_TXT9)) as TRK_TXT, MAJ_SEQ, MAJ_DON   from #temp_event_extract where MAJ_TRK_STEP_COMP9 is not null
+union																																																    																											  					
+select LTRIM(RTRIM(CASE_REF)) as [CASE_REF], LTRIM(RTRIM(COUNTRY_CODE)) as [COUNTRY_CODE], LTRIM(RTRIM(MAJ_TRK_ID)) as [MAJ_TRK_ID], LTRIM(RTRIM(MAJ_TEXT3)) + ': ' + LTRIM(RTRIM(TRK_TXT10)) as [eventdesc], MAJ_TRK_STEP_COMP10 as [eventdate], APPS_CASE_TYPE,IC_CODE, NOTES, LTRIM(RTRIM(MAJ_TEXT3)) as MAJ_TEXT3, LTRIM(RTRIM(TRK_TXT10)) as TRK_TXT, MAJ_SEQ, MAJ_DON  from #temp_event_extract where MAJ_TRK_STEP_COMP10 is not null
+union																																																     
+select LTRIM(RTRIM(CASE_REF)) as [CASE_REF], LTRIM(RTRIM(COUNTRY_CODE)) as [COUNTRY_CODE], LTRIM(RTRIM(MAJ_TRK_ID)) as [MAJ_TRK_ID], LTRIM(RTRIM(MAJ_TEXT3))+ ' {OA_Date}' as [eventdesc], MAJ_OA_DATE as [eventdate]  , APPS_CASE_TYPE,IC_CODE, NOTES, LTRIM(RTRIM(MAJ_TEXT3)) as MAJ_TEXT3, '{OA_Date}' as TRK_TXT, MAJ_SEQ, MAJ_DON  from #temp_event_extract where MAJ_OA_DATE is not null
+union																																																    
+select LTRIM(RTRIM(CASE_REF)) as [CASE_REF], LTRIM(RTRIM(COUNTRY_CODE)) as [COUNTRY_CODE], LTRIM(RTRIM(MAJ_TRK_ID)) as [MAJ_TRK_ID], LTRIM(RTRIM(MAJ_TEXT3))+ ' {OA_Received}' as [eventdesc], MAJ_OA_RECEIVED as [eventdate], APPS_CASE_TYPE,IC_CODE, NOTES, LTRIM(RTRIM(MAJ_TEXT3)) as MAJ_TEXT3, '{OA_Received}' as TRK_TXT, MAJ_SEQ, MAJ_DON  from #temp_event_extract where MAJ_OA_RECEIVED is not null
 order by 3
 
----Numbertypes mapping tab
-select --distinct 
-	APPS_CASE_TYPE,--IC_CODE,
-	IC_NOS_DESC,
-	ColumnNumber ,
-	count(*) as [Count]
-from APPS_DN_Normalised 
-where APPS_DN_NO is not null
-group by 
-	APPS_CASE_TYPE,
-	IC_NOS_DESC,
-	ColumnNumber 
-order by 2,1,3
 
---Mapping Tab - Events - APPS_DN
-select 
+--select * from conv_DY_MAJ_Normalised where CASE_REF = 'P089648.EPP'
+
+--select * from BB..DY_MAJ where MAJ_CASE_REF = 'P089648.EPP'
+--select * from BB..TRACKS where TRK_ID = 'FEPPCT'
+
+/*
+--MAPPING DOC
+select
+	--distinct -- 145800
 	APPS_CASE_TYPE,
 	IC_CODE,
-	IC_NOS_DESC,
-	ColumnNumber,
-	count(*) as [Count]
-from APPS_DN_Normalised 
---where IC_NOS_DESC like 'Local%'
---where IC_NOS_DESC is not null
+	MAJ_TRK_ID,
+	COUNTRY_CODE,
+	[eventdesc]
+	,count(*) as [Count]
+from
+	conv_DY_MAJ_Normalised
+Where
+	APPS_CASE_TYPE = 'P'
+    and
+	(eventdesc like '%{OA_Date}' or eventdesc like '%{OA_Received}')
 group by 
 	APPS_CASE_TYPE,
 	IC_CODE,
-	IC_NOS_DESC,
-	ColumnNumber
-order by 3,1,2
-
-select * from APPS_DN_Normalised where ColumnNumber in (6,7) and APPS_DN_NO is not null and IC_CODE = 'AR'
-
-select * from APPS_DN_Normalised where APPS_DN_NO is not null
-
-
-select * from APPSALL
-where CASE_REF = 'D084315.GBN-EMX' 
-
-select * from IC_NOS where IC_CODE_NOS = 'GB-EMX'
-
-select * from APPS_DN
-where CASE_REF = 'D084315.GBN-EMX' 
-
-
-D038338.ARP2        number 7
-D038338.ARP2        no number 1
+	MAJ_TRK_ID,
+	COUNTRY_CODE,
+	[eventdesc]
+order by 4,1,2
 */
+
+--select * from BB..DY_MAJ
+
+
+
