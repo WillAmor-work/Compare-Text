@@ -1,262 +1,75 @@
-
 /*******************************************************************************
 
                             CPA Software Solutions
-                      
+                       Standard Approach to Conversion
 
-			     				Barker Brettell
+                             Disable all triggers
 
+InproTech version: 3.4.2
 
 Description:
-Import Adhoc reminders from Progressor database
+ This script will disable all triggers on all Inprotech tables.
 
 Modification History:
-16/05/2023		Created						D Hodges
-26/07/2023		Edited SEQUENCENO code 		W Amor		
+ 2009-01-16 AvB  3: Change table name.
+ 2007-10-04 AvB  2: Alter only tables, not views.
+ 2007-04-20 AvB  1: Exclude conversion table.
+ 2007-03-06 AvB     Created
+
 *******************************************************************************/
+USE EMEABB
+GO
 
-DECLARE @LogID        int,
-        @RowsAffected bigint,
-        @Error        int
+DECLARE @TableSchema sysname,
+        @TableName   sysname,
+        @SQLStr      nvarchar (1000),
+        @Action      nvarchar (20),
+        @ActionDesc  nvarchar (20),
+        @NewLine     nchar (2)
 
-EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'350 - Ad-hoc reminders',
-                                     NULL,
-                                     N'Ad-hoc reminders - MAJ_DUE is null',
-                                     N'Insert Ad-hocs in ALERT for duedates',
-                                     N'ALERT',
-                                     1,
-                                     @LogID OUTPUT
+SET @Action = 'DISABLE'
+--SET @Action = 'ENABLE'
 
+IF @Action = 'DISABLE'
+  SET @ActionDesc = 'Disabling'
+IF @Action = 'ENABLE'
+  SET @ActionDesc = 'Enabling'
 
+SET @NewLine = NCHAR (13) + NCHAR (10)
 
-	; with a as (
-		select 
-			cn.NAMENO as EMPLOYEENO,
-			cmc.caseid as CASEID,
-			'Ad-hoc: ' + 
-				LTRIM(RTRIM(d.MAJ_TEXT3))+
-				CASE WHEN d.MAJ_TEXT1 != '' THEN CHAR(13)+CHAR(10)+LTRIM(RTRIM(d.MAJ_TEXT1)) ELSE '' END+
-				CASE WHEN d.MAJ_TEXT2 != '' THEN CHAR(13)+CHAR(10)+LTRIM(RTRIM(d.MAJ_TEXT2)) ELSE '' END+
-				CASE WHEN d.MAJ_TEXT4 != '' THEN CHAR(13)+CHAR(10)+LTRIM(RTRIM(d.MAJ_TEXT4)) ELSE '' END
-			as ALERTMESSAGE,
-			case when DATEADD(day,-14,d.MAJ_ATT)>cast (getdate() as Date ) then DATEADD(day,-14,d.MAJ_ATT)
-				else cast (getdate() as Date ) end as ALERTDATE,
-			--cast (getdate() as Date ) as ALERTDATE,
-			d.MAJ_ATT as DUEDATE, 
-			1 as DAILYFREQUENCY,
-			14 as DAYSLEAD,
-			--0 as SEQUENCENO,
-			dateadd(SS,ROW_NUMBER() over (--partition by cn.NAMENO 
-			order by  cn.NAMENO),getdate()) as ALERTSEQ
-		--select *
-		from 
-			Conv_MappingCases cmc
-			--join Conv_DY_MAJ_Normalised dym on cmc.BB_CASE_REF = dym.CASE_REF COLLATE DATABASE_DEFAULT
-			--join Conv_EVENTMAP_DY_MAJ cem on	cem.BB_APPS_CASE_TYPE = dym.APPS_CASE_TYPE COLLATE DATABASE_DEFAULT and
-			--									cem.BB_IC_CODE = dym.IC_CODE COLLATE DATABASE_DEFAULT and
-			--									cem.BB_MAJ_TRK_ID = dym.MAJ_TRK_ID COLLATE DATABASE_DEFAULT and
-			--									cem.BB_COUNTRY_CODE = dym.COUNTRY_CODE COLLATE DATABASE_DEFAULT and
-			--									cem.BB_EVENTDESC = dym.EVENTDESC COLLATE DATABASE_DEFAULT 
-			join BB..DY_MAJ d on d.MAJ_CASE_REF COLLATE DATABASE_DEFAULT = cmc.BB_CASE_REF
-			join CASENAME cn on cmc.caseid = cn.caseid and cn.NAMETYPE = 'SIG'
-		where
-			d.MAJ_TRK_ID = 'MISCDY'
-			--cem.NOTES = 'map to ad hoc'
-			and d.MAJ_DUE is NULL
-			and d.MAJ_ATT is not NULL
-			and d.MAJ_DON is null
-	)
-	insert into ALERT (EMPLOYEENO,CASEID,ALERTMESSAGE,
-		   ALERTDATE,DUEDATE,
-		   DAILYFREQUENCY,DAYSLEAD,
-		   ALERTSEQ, SEQUENCENO)
-	select	*
-		,	ROW_NUMBER()over(partition by employeeno, caseid order by alertdate, duedate, alertseq) - 1 as [SEQUENCENO]
-	from a
+DECLARE InproTableCursor CURSOR FOR
+  SELECT QUOTENAME (TABLE_SCHEMA),
+         QUOTENAME (TABLE_NAME)
+  FROM INFORMATION_SCHEMA.TABLES
+  WHERE OBJECTPROPERTY (OBJECT_ID (QUOTENAME (TABLE_SCHEMA) + '.' + QUOTENAME (TABLE_NAME)), 'IsMSShipped') = 0 AND
+        TABLE_NAME <> N'Conv_ScriptsToRun' AND --1:+ --2: --3:
+        TABLE_TYPE  = N'BASE TABLE' --2:+
 
-SELECT @Error        = @@ERROR,
-       @RowsAffected = @@ROWCOUNT
+OPEN InproTableCursor
 
-EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
-                                   @RowsAffected,
-                                   @Error,
-                                   1
-go
+FETCH NEXT FROM InproTableCursor
+  INTO @TableSchema,
+       @TableName
 
+WHILE @@FETCH_STATUS = 0
+BEGIN
 
-DECLARE @LogID        int,
-        @RowsAffected bigint,
-        @Error        int
+  SET @SQLStr = N'PRINT ''' + @ActionDesc + ' trigger(s) for ' + @TableSchema + N'.' + @TableName + N'...''' + @NewLine +
+                N'ALTER TABLE ' + @TableSchema + N'.' + @TableName + N' ' + @Action + N' TRIGGER ALL'
 
-EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'350 - Ad-hoc reminders',
-                                     NULL,
-                                     N'Ad-hoc reminders - MAJ_DUE exists',
-                                     N'Insert Ad-hocs in ALERT for duedates',
-                                     N'ALERT',
-                                     1,
-                                     @LogID OUTPUT
+  --PRINT @SQLStr
+  EXECUTE sp_executesql @SQLStr
 
+  FETCH NEXT FROM InproTableCursor
+    INTO @TableSchema,
+         @TableName
 
-	;	with a as (
-		select 
-			cn.NAMENO as EMPLOYEENO,
-			cmc.caseid as CASEID,
-			'Ad-hoc: ' + 
-				LTRIM(RTRIM(d.MAJ_TEXT3))+
-				CASE WHEN d.MAJ_TEXT1 != '' THEN CHAR(13)+CHAR(10)+LTRIM(RTRIM(d.MAJ_TEXT1)) ELSE '' END+
-				CASE WHEN d.MAJ_TEXT2 != '' THEN CHAR(13)+CHAR(10)+LTRIM(RTRIM(d.MAJ_TEXT2)) ELSE '' END+
-				CASE WHEN d.MAJ_TEXT4 != '' THEN CHAR(13)+CHAR(10)+LTRIM(RTRIM(d.MAJ_TEXT4)) ELSE '' END
-			as ALERTMESSAGE,
-			--cast (getdate() as Date ) as ALERTDATE,--d.MAJ_ATT as ALERTDATE,
-			case when d.MAJ_ATT> cast(getdate() as Date) then d.MAJ_ATT
-				else cast (getdate() as Date ) end as ALERTDATE,
-			d.MAJ_DUE as DUEDATE, 
-			1 as DAILYFREQUENCY,
-			DATEDIFF(day,d.MAJ_ATT,d.MAJ_DUE) as DAYSLEAD,
-			--0 as SEQUENCENO,
-			dateadd(SS,ROW_NUMBER() over (--partition by cn.NAMENO 
-			order by  cn.NAMENO),getdate()) as ALERTSEQ
-		--select *
-		from 
-			Conv_MappingCases cmc
-			--join Conv_DY_MAJ_Normalised dym on cmc.BB_CASE_REF = dym.CASE_REF COLLATE DATABASE_DEFAULT
-			--join Conv_EVENTMAP_DY_MAJ cem on	cem.BB_APPS_CASE_TYPE = dym.APPS_CASE_TYPE COLLATE DATABASE_DEFAULT and
-			--									cem.BB_IC_CODE = dym.IC_CODE COLLATE DATABASE_DEFAULT and
-			--									cem.BB_MAJ_TRK_ID = dym.MAJ_TRK_ID COLLATE DATABASE_DEFAULT and
-			--									cem.BB_COUNTRY_CODE = dym.COUNTRY_CODE COLLATE DATABASE_DEFAULT and
-			--									cem.BB_EVENTDESC = dym.EVENTDESC COLLATE DATABASE_DEFAULT 
-			join BB..DY_MAJ d on d.MAJ_CASE_REF COLLATE DATABASE_DEFAULT = cmc.BB_CASE_REF
-			join CASENAME cn on cmc.caseid = cn.caseid and cn.NAMETYPE = 'SIG'
-		where
-			d.MAJ_TRK_ID = 'MISCDY'
-			--cem.NOTES = 'map to ad hoc'
-			and d.MAJ_DUE is not NULL
-			and d.MAJ_ATT is not NULL
-			and d.MAJ_DON is null
-	)
-	insert into ALERT (EMPLOYEENO,CASEID,ALERTMESSAGE,--REFERENCE,
-		   ALERTDATE,DUEDATE,
-		   --OCCURREDFLAG,DELETEDATE,STOPREMINDERSDATE,MONTHLYFREQUENCY,MONTHSLEAD,
-		   DAILYFREQUENCY,DAYSLEAD,
-		   --SENDELECTRONICALLY,IMPORTANCELEVEL,EMPLOYEEFLAG,SIGNATORYFLAG,CRITICALFLAG
-		   ALERTSEQ,SEQUENCENO)
-	select *
-		,	ROW_NUMBER()over(partition by employeeno, caseid order by alertdate, duedate, alertseq) - 1 as [SEQUENCENO]
-	from a
+END -- while: fetch_status = 0
 
+CLOSE InproTableCursor
+DEALLOCATE InproTableCursor
+GO
 
-SELECT @Error        = @@ERROR,
-       @RowsAffected = @@ROWCOUNT
-
-EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
-                                   @RowsAffected,
-                                   @Error,
-                                   1
-go
-
-
-DECLARE @LogID        int,
-        @RowsAffected bigint,
-        @Error        int
-
-EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'350 - Ad-hoc reminders',
-                                     NULL,
-                                     N'Ad-hoc reminders - MAJ_DON exists',
-                                     N'Insert Ad-hocs in ALERT for duedates',
-                                     N'ALERT',
-                                     1,
-                                     @LogID OUTPUT
-
-
-	; with a as (
-		select 
-			cn.NAMENO as EMPLOYEENO,
-			cmc.caseid as CASEID,
-			'Ad-hoc: ' + 
-				LTRIM(RTRIM(d.MAJ_TEXT3))+
-				CASE WHEN d.MAJ_TEXT1 != '' THEN CHAR(13)+CHAR(10)+LTRIM(RTRIM(d.MAJ_TEXT1)) ELSE '' END+
-				CASE WHEN d.MAJ_TEXT2 != '' THEN CHAR(13)+CHAR(10)+LTRIM(RTRIM(d.MAJ_TEXT2)) ELSE '' END+
-				CASE WHEN d.MAJ_TEXT4 != '' THEN CHAR(13)+CHAR(10)+LTRIM(RTRIM(d.MAJ_TEXT4)) ELSE '' END
-			as ALERTMESSAGE,
-			d.MAJ_ATT as ALERTDATE,
-			d.MAJ_DUE as DUEDATE, 
-			1 as OCCUREDFLAG,
-			d.MAJ_DON as DATEOCCURRED,
-			1 as DAILYFREQUENCY,
-			DATEDIFF(day,d.MAJ_ATT,d.MAJ_DUE) as DAYSLEAD,
-			--0 as SEQUENCENO,
-			dateadd(SS,ROW_NUMBER() over (--partition by cn.NAMENO 
-			order by  cn.NAMENO),getdate()) as ALERTSEQ
-		--select *
-		from 
-			Conv_MappingCases cmc
-			--join Conv_DY_MAJ_Normalised dym on cmc.BB_CASE_REF = dym.CASE_REF COLLATE DATABASE_DEFAULT
-			--join Conv_EVENTMAP_DY_MAJ cem on	cem.BB_APPS_CASE_TYPE = dym.APPS_CASE_TYPE COLLATE DATABASE_DEFAULT and
-			--									cem.BB_IC_CODE = dym.IC_CODE COLLATE DATABASE_DEFAULT and
-			--									cem.BB_MAJ_TRK_ID = dym.MAJ_TRK_ID COLLATE DATABASE_DEFAULT and
-			--									cem.BB_COUNTRY_CODE = dym.COUNTRY_CODE COLLATE DATABASE_DEFAULT and
-			--									cem.BB_EVENTDESC = dym.EVENTDESC COLLATE DATABASE_DEFAULT 
-			join BB..DY_MAJ d on d.MAJ_CASE_REF COLLATE DATABASE_DEFAULT = cmc.BB_CASE_REF
-			join CASENAME cn on cmc.caseid = cn.caseid and cn.NAMETYPE = 'SIG'
-		where
-			d.MAJ_TRK_ID = 'MISCDY'
-			--cem.NOTES = 'map to ad hoc'
-			and d.MAJ_DON is not null
-	)
-	insert into ALERT (EMPLOYEENO,CASEID,ALERTMESSAGE,--REFERENCE,
-		   ALERTDATE,DUEDATE,OCCURREDFLAG,DATEOCCURRED,
-		   --DELETEDATE,STOPREMINDERSDATE,MONTHLYFREQUENCY,MONTHSLEAD,
-		   DAILYFREQUENCY,DAYSLEAD,
-		   --SENDELECTRONICALLY,IMPORTANCELEVEL,EMPLOYEEFLAG,SIGNATORYFLAG,CRITICALFLAG
-		   ALERTSEQ,SEQUENCENO)
-	select *
-		,	ROW_NUMBER()over(partition by employeeno, caseid order by alertdate, duedate, alertseq) - 1 as [SEQUENCENO]
-	from a
-
-
-SELECT @Error        = @@ERROR,
-       @RowsAffected = @@ROWCOUNT
-
-EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
-                                   @RowsAffected,
-                                   @Error,
-                                   1
-go
-
---delete from alert
---select * from alert
-
-
-		--select 
-		--	cn.NAMENO as EMPLOYEENO,
-		--	cmc.caseid as CASEID,
-		--	'Ad-hoc: ' + dym.NOTES as ALERTMESSAGE,
-		--	d.MAJ_ATT as ALERTDATE,--cast (getdate() as Date ) as ALERTDATE,
-		--	d.MAJ_ATT as DUEDATE, 
-		--	1 as DAILYFREQUENCY,
-		--	14 as DAYSLEAD,
-		--	0 as SEQUENCENO,
-		--	dateadd(SS,ROW_NUMBER() over (partition by cn.NAMENO order by  cn.NAMENO),getdate()) as ALERTSEQ
-		----select *
-		--from 
-		--	Conv_MappingCases cmc
-		--	join Conv_DY_MAJ_Normalised dym on cmc.BB_CASE_REF = dym.CASE_REF COLLATE DATABASE_DEFAULT
-		--	join Conv_EVENTMAP_DY_MAJ cem on	cem.BB_APPS_CASE_TYPE = dym.APPS_CASE_TYPE COLLATE DATABASE_DEFAULT and
-		--										cem.BB_IC_CODE = dym.IC_CODE COLLATE DATABASE_DEFAULT and
-		--										cem.BB_MAJ_TRK_ID = dym.MAJ_TRK_ID COLLATE DATABASE_DEFAULT and
-		--										cem.BB_COUNTRY_CODE = dym.COUNTRY_CODE COLLATE DATABASE_DEFAULT and
-		--										cem.BB_EVENTDESC = dym.EVENTDESC COLLATE DATABASE_DEFAULT 
-		--	join BB..DY_MAJ d on d.MAJ_CASE_REF = dym.CASE_REF
-		--						and d.MAJ_TEXT3 = dym.MAJ_TEXT3
-		--						and d.MAJ_CASE_TYPE = dym.APPS_CASE_TYPE
-		--						and d.MAJ_TRK_ID = dym.MAJ_TRK_ID
-		--						and d.MAJ_SEQ = dym.MAJ_SEQ
-		--	join CASENAME cn on cmc.caseid = cn.caseid and cn.NAMETYPE = 'SIG'
-		--where
-		--	--dym.MAJ_TRK_ID = 'MISCDY'
-		--	cem.NOTES = 'map to ad hoc'
-		--	and d.MAJ_DUE is NULL
-		--	and d.MAJ_ATT is not NULL
+--
+-- END OF SCRIPT
+--
