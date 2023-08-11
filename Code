@@ -3,14 +3,14 @@
                             CPA Software Solutions
                       
 
-			     Barker Brettell
+							Barker Brettell LLP
 
 
 Description:
-Bring over the Cases from the Progressor db to Inprotech
+Import Case Names from Progressor to Inprotech database
 
 Modification History:
-30/11/2022		Created		D Hodges
+19/01/2023		Created						D Hodges
 
 
 *******************************************************************************/
@@ -20,130 +20,41 @@ go
 set concat_null_yields_null off
 go
 
---select * from BB..VAPPSALL
-
---DECLARE @LogID        int,
---        @RowsAffected bigint,
---        @Error        int
-
---EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
---                                     N'200 - Cases',
---                                     NULL,
---                                     N'Cases',
---                                     N'Inserting into CASEFAMILY existing families',
---                                     N'CASEFAMILY',
---                                     1,
---                                     @LogID OUTPUT
-
---insert into CASEFAMILY (FAMILY,FAMILYTITLE)
---select distinct cmc.FAMILY,f.FAMILYTITLE
---from 
---	Conv_MappingCases cmc
---	join inpro81..CASES c on c.caseid = cmc.SY_CASEID
---	join inpro81..CASEFAMILY f on c.FAMILY = f.FAMILY
---	left join CASEFAMILY cf on cf.FAMILY = cmc.FAMILY
---where cf.FAMILY is null
-----and cmc.FAMILY = 'P7058'
-
---SELECT @Error        = @@ERROR,
---       @RowsAffected = @@ROWCOUNT
-
---EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
---                                   @RowsAffected,
---                                   @Error,
---                                   1
---go
-
---DECLARE @LogID        int,
---        @RowsAffected bigint,
---        @Error        int
-
---EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
---                                     N'200 - Cases',
---                                     NULL,
---                                     N'Cases',
---                                     N'Inserting into CASEFAMILY new families',
---                                     N'CASEFAMILY',
---                                     1,
---                                     @LogID OUTPUT
-
---insert into CASEFAMILY (FAMILY,FAMILYTITLE)
---select distinct cmc.FAMILY,cmc.FAMILY
---from 
---	Conv_MappingCases cmc
---	left join inpro81..CASES c on c.caseid = cmc.SY_CASEID
---	left join inpro81..CASEFAMILY f on c.FAMILY = f.FAMILY
---	left join CASEFAMILY cf on cf.FAMILY = cmc.FAMILY
---where cf.FAMILY is null and f.FAMILY is null
-
---SELECT @Error        = @@ERROR,
---       @RowsAffected = @@ROWCOUNT
-
---EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
---                                   @RowsAffected,
---                                   @Error,
---                                   1
---go
---
--- insert into Cases
---
---12:28 before disable trigger
-ALTER TABLE CASES DISABLE TRIGGER CPAFieldsInsertedOnCases
---ALTER TABLE CASES DISABLE TRIGGER tI_CASES_Integration
-ALTER TABLE CASES DISABLE TRIGGER InsertCASES_ids
-ALTER TABLE CASES DISABLE TRIGGER tI_CASES_Audit
-ALTER TABLE CASES DISABLE TRIGGER tI_UniqueCaseReference
 
 DECLARE @LogID        int,
         @RowsAffected bigint,
         @Error        int
 
 EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'200 - Cases',
+                                     N'201 - CaseNames',
                                      NULL,
-                                     N'Cases',
-                                     N'Inserting into Cases - Patents/Designs',
-                                     N'CASE',
+                                     N'Case Names',
+                                     N'Insert CASENAME',
+                                     N'CASENAME',
                                      1,
                                      @LogID OUTPUT
 
 
+insert into CASENAME(CASEID, NAMETYPE, SEQUENCE, NAMENO, INHERITED, CORRESPONDNAME, DERIVEDCORRNAME, REFERENCENO, ADDRESSCODE)
+select 
+	cmc.CASEID,
+	ntm.NAMETYPE,
+	row_number() over (partition by cmc.CASEID, ntm.NAMETYPE order by c.SN_CCD_CODE )-1 as SEQUENCE,
+	cn.NAMENO,
+	0 as INHERITED,
+	CASE WHEN ntm.NAMETYPE = 'I' THEN mcn.NAMENO ELSE NULL END as CORRESPONDNAME,
+	0 as DERIVEDCORRNAME,
+	null as REFERENCENO,
+	cn.ADDRESSCODE
+from
+	Conv_MappingCases cmc
+	join BB..SN_CCD c on c.CASE_REF COLLATE DATABASE_DEFAULT = cmc.BB_CASE_REF
+	join Conv_NAME cn on cn.NA_REFERENCE = c.SN_CCD_CODE COLLATE DATABASE_DEFAULT
+	join Conv_NAMETYPEMAP ntm on ntm.BB_NAMETYPE = c.SN_CCD_TYPE  COLLATE DATABASE_DEFAULT --801627
+	left join BB..SN_CCD mc on mc.CASE_REF COLLATE DATABASE_DEFAULT = cmc.BB_CASE_REF and mc.SN_CCD_TYPE = 'CLI M.C.'
+	left join Conv_NAME mcn on mcn.NA_REFERENCE = mc.SN_CCD_CODE COLLATE DATABASE_DEFAULT
+--select * from BB..SN_CCTP has ordering by property type?
 
-
-
-insert into CASES(CASEID, IRN, CASETYPE, COUNTRYCODE, PROPERTYTYPE, CASECATEGORY, SUBTYPE, TITLE, STATUSCODE, --LOCALCLASSES, INTCLASSES,
-		 ENTITYSIZE,PURCHASEORDERNO,CURRENTOFFICIALNO, OFFICEID) --, LOCALCLIENTFLAG, FAMILY, TYPEOFMARK, NOINSERIES, STEM)
-select	CMC.CASEID, 
-		substring(IRN, 1,30), 
-		CMC.CASETYPE,
-		CMC.COUNTRYCODE as COUNTRYCODE,
-		CMC.PROPERTYTYPE, 
-		case when CMC.CASECATEGORY = 'See Comment' then 'N'
-			else CMC.CASECATEGORY end as CASECATEGORY,
-		case when CMC.SUBTYPE = 'See Comment' then 'N'
-			else CMC.SUBTYPE end as SUBTYPE, 
-		substring(dbo.fn_StripNonASCII(CMC.TITLE), 1, 254) as TITLE,
-		CASE WHEN cmc.LIVEFLAG != 'Y' THEN 19 --Dead on Conversion 
-			 ELSE NULL END as STATUSCODE,
-		--LOCALCLASSES,			--Local Classes
-		--INTCLASSES,			-- INT Classes
-		CMC.ENTITYSIZE,
-		PURCHASEORDERNO,
-		case when REGNO is not null and REGNO <> ' ' then substring(REGNO, 1, 36)
-			else substring(APPNO, 1, 36) end,							-- Current Official No.
-		OFFICEID --Office ID 
-		--null,			-- Local Client Flag
-		--CMC.FAMILY,			-- Family
-		--TYPEOFMARK,		-- Type Of Mark
-		--NULL
-		--STEM
-from	 Conv_MappingCases CMC
---where PROPERTYTYPE != ''
---left join COUNTRY c on CMC.COUNTRYCODE = c.COUNTRYCODE where c.COUNTRYCODE is null
---where IRN = 'ZMT5693W'
-
-
---select * from conv_mappingcases where propertytype = ''
 
 SELECT @Error        = @@ERROR,
        @RowsAffected = @@ROWCOUNT
@@ -154,46 +65,23 @@ EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
                                    1
 go
 
-ALTER TABLE CASES ENABLE TRIGGER CPAFieldsInsertedOnCases
---ALTER TABLE CASES ENABLE TRIGGER tI_CASES_Integration
-ALTER TABLE CASES ENABLE TRIGGER InsertCASES_ids
-ALTER TABLE CASES ENABLE TRIGGER tI_CASES_Audit
-ALTER TABLE CASES ENABLE TRIGGER tI_UniqueCaseReference
-
-
---select * from Conv_STATUSMAP
-
-
-
-
 DECLARE @LogID        int,
         @RowsAffected bigint,
         @Error        int
 
 EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'200 - Cases',
+                                     N'201 - CaseNames',
                                      NULL,
-                                     N'Cases',
-                                     N'Inserting applications in Property table',
-                                     N'PROPERTY',
+                                     N'Case Names - BillPercentage for Debtors',
+                                     N'Update CASENAME',
+                                     N'CASENAME',
                                      1,
                                      @LogID OUTPUT
 
-insert into PROPERTY(CASEID, BASIS, RENEWALSTATUS) --, NOOFCLAIMS,RENEWALNOTES)
-select	--*,
-	CMC.CASEID,
-	BASIS,
-	CASE WHEN cmc.LIVEFLAG != 'Y' THEN -226 
-		 ELSE NULL END as RENEWALSTATUS
-	--rs.STATUSCODE as RENEWALSTATUS,
-	--p.NOOFCLAIMS,
-	--p.RENEWALCYCLE,
-	--p.RENEWALNOTES
---select distinct p.RENEWALSTATUS
-from	 Conv_MappingCases CMC
-
-where	cmc.CASETYPE = 'A'
-	--and p.RENEWALSTATUS is not null
+update casename 
+set BILLPERCENTAGE = 100.00
+where nametype in ('D', 'Z') 
+and SEQUENCE = 0
 
 SELECT @Error        = @@ERROR,
        @RowsAffected = @@ROWCOUNT
@@ -203,128 +91,160 @@ EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
                                    @Error,
                                    1
 go
---select * from property
---select * from BB..VAPPSALL2 where STATUSNOT_AE is null
---select * from status
-
---MOVED TO 150 script
-
---DECLARE @LogID        int,
---        @RowsAffected bigint,
---        @Error        int
-
---EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
---                                     N'200 - Cases',
---                                     NULL,
---                                     N'Cases',
---                                     N'Update Entity Size - Default to large',
---                                     N'CASES',
---                                     1,
---                                     @LogID OUTPUT
-
---Update C
---set		ENTITYSIZE =	case
---							when small.CASE_EXT_DATA = 'Y' then 2604 
---							when micro.CASE_EXT_DATA = 'Y' then -42846999
---							else 2601 
---						end 
-----select 
-----	cmc.CASEID,
-----	micro.CASE_EXT_DATA as MICRO,
-----	small.CASE_EXT_DATA as SMALL,
-----	case
-----		when small.CASE_EXT_DATA = 'Y' then 2604 
-----		when micro.CASE_EXT_DATA = 'Y' then -42846999
-----		else 2601 
-----	end as ENTITYSIZE
---from	
---	CASES C
---	join Conv_MappingCases CMC on (C.CASEID = CMC.CASEID)
---	left join BB..CASE_EXT small on small.CASE_REF COLLATE DATABASE_DEFAULT = cmc.BB_CASE_REF and small.CASE_EXT_KEY = 'SMALL ENTITY' and small.CASE_EXT_DATA != ''
---	left join BB..CASE_EXT micro on micro.CASE_REF COLLATE DATABASE_DEFAULT = cmc.BB_CASE_REF and micro.CASE_EXT_KEY = 'MICRO ENTITY' and micro.CASE_EXT_DATA != ''
-	
-
---SELECT @Error        = @@ERROR,
---       @RowsAffected = @@ROWCOUNT
-
---EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
---                                   @RowsAffected,
---                                   @Error,
---                                   1
---go
 
 
---	select 	* from TABLECODES where tabletype  = 26
+DECLARE @LogID        int,
+        @RowsAffected bigint,
+        @Error        int
+
+EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+                                     N'201 - CaseNames',
+                                     NULL,
+                                     N'Case Names - PARTNERS',
+                                     N'Insert CASENAME',
+                                     N'CASENAME',
+                                     1,
+                                     @LogID OUTPUT
+
+insert into CASENAME(CASEID, NAMETYPE, SEQUENCE, NAMENO, INHERITED, CORRESPONDNAME, DERIVEDCORRNAME, REFERENCENO, ADDRESSCODE)
+select 
+	cmc.CASEID,
+	'EMP',
+	row_number() over (partition by cmc.CASEID order by p.NAMENO )-1 as SEQUENCE,
+	p.NAMENO,
+	0 as INHERITED,
+	null as CORRESPONDNAME,
+	0 as DERIVEDCORRNAME,
+	null as REFERENCENO,
+	p.ADDRESSCODE
+from 
+	Conv_MappingCases cmc
+	join BB..APPSALL a on cmc.BB_CASE_REF = a.CASE_REF COLLATE DATABASE_DEFAULT
+	join Conv_NAME p on a.CSE_PARTNER COLLATE DATABASE_DEFAULT = p.NAMECODE
+
+SELECT @Error        = @@ERROR,
+       @RowsAffected = @@ROWCOUNT
+
+EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
+                                   @RowsAffected,
+                                   @Error,
+                                   1
+go
+
+DECLARE @LogID        int,
+        @RowsAffected bigint,
+        @Error        int
+
+EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+                                     N'201 - CaseNames',
+                                     NULL,
+                                     N'Case Names - PARTNERS SIG',
+                                     N'Insert CASENAME',
+                                     N'CASENAME',
+                                     1,
+                                     @LogID OUTPUT
+
+insert into CASENAME(CASEID, NAMETYPE, SEQUENCE, NAMENO, INHERITED, CORRESPONDNAME, DERIVEDCORRNAME, REFERENCENO, ADDRESSCODE)
+select 
+	cmc.CASEID,
+	'SIG',
+	row_number() over (partition by cmc.CASEID order by p.NAMENO )-1 as SEQUENCE,
+	p.NAMENO,
+	0 as INHERITED,
+	null as CORRESPONDNAME,
+	0 as DERIVEDCORRNAME,
+	null as REFERENCENO,
+	p.ADDRESSCODE
+from 
+	Conv_MappingCases cmc
+	join BB..APPSALL a on cmc.BB_CASE_REF = a.CASE_REF COLLATE DATABASE_DEFAULT
+	join Conv_NAME p on a.CSE_PARTNER COLLATE DATABASE_DEFAULT = p.NAMECODE
+
+SELECT @Error        = @@ERROR,
+       @RowsAffected = @@ROWCOUNT
+
+EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
+                                   @RowsAffected,
+                                   @Error,
+                                   1
+go
 
 
 
---
--- For Related Cases
--- If the cases is related to an existing case on the database set the RelatedCaseid column
---
+DECLARE @LogID        int,
+        @RowsAffected bigint,
+        @Error        int
 
---DECLARE @LogID        int,
---        @RowsAffected bigint,
---        @Error        int
+EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+                                     N'201 - CaseNames',
+                                     NULL,
+                                     N'Case Names - Renewals Team (ZS) Names',
+                                     N'Insert CASENAME',
+                                     N'CASENAME',
+                                     1,
+                                     @LogID OUTPUT
 
---EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
---                                     N'200 - Cases',
---                                     NULL,
---                                     N'RelatedCases',
---                                     N'Updating external relationships if case exists',
---                                     N'CASES',
---                                     1,
---                                     @LogID OUTPUT
+insert into CASENAME(CASEID, NAMETYPE, SEQUENCE, NAMENO, INHERITED, CORRESPONDNAME, DERIVEDCORRNAME, REFERENCENO, ADDRESSCODE)
+select 
+	cmc.CASEID,
+	'ZS',
+	0 as SEQUENCE,
+	CASE when cmc.PROPERTYTYPE = 'T' then 537
+		 when cmc.PROPERTYTYPE in ('P','D', 'U') then 538 --added 'U' here cut5 25/07/2023 wda
+	end as NAMENO,
+	0 as INHERITED,
+	null as CORRESPONDNAME,
+	0 as DERIVEDCORRNAME,
+	null as REFERENCENO,
+	501
+from 
+	Conv_MappingCases cmc
 
---Update	RC
---set		RELATEDCASEID = C.CASEID,
---		OFFICIALNUMBER = NULL,
---		COUNTRYCODE = NULL
-----select *
---from	RELATEDCASE RC
---join	CASES C1 on (RC.CASEID = C1.CASEID)
---join	OFFICIALNUMBERS O on (RC.OFFICIALNUMBER = O.OFFICIALNUMBER
---					and		RC.CASEID <> O.CASEID)
---join	CASES C on (RC.COUNTRYCODE = C.COUNTRYCODE
---				and		RC.CASEID <> C.CASEID
---				and		O.CASEID = C.CASEID)
---join	Conv_MappingCases CMC on (C.CASEID = CMC.CASEID)
---where	RC.RELATEDCASEID is null
---and		RC.OFFICIALNUMBER is not null
 
---SELECT @Error        = @@ERROR,
---       @RowsAffected = @@ROWCOUNT
 
---EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
---                                   @RowsAffected,
---                                   @Error,
---                                   1
---go
+SELECT @Error        = @@ERROR,
+       @RowsAffected = @@ROWCOUNT
 
---DECLARE @LogID        int,
---        @RowsAffected bigint,
---        @Error        int
+EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
+                                   @RowsAffected,
+                                   @Error,
+                                   1
+go
 
---EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
---                                     N'200 - Cases',
---                                     NULL,
---                                     N'NameTypeClassification',
---                                     N'Identify where name is being used',
---                                     N'NAMES',
---                                     1,
---                                     @LogID OUTPUT
+--select * from Conv_MappingCases where PROPERTYTYPE not in ('P','D','T')
+--select * from NAMETYPE
+--select * from NAME where name like '%renewal%'
 
---insert into NAMETYPECLASSIFICATION(NAMENO, NAMETYPE, ALLOW)
---select	distinct CTT.NAMENO,  CN.NAMETYPE, 1
---from	Conv_NAME CTT
---join	NAME N on (CTT.NAMENO = N.NAMENO)
---join	CASENAME CN on (N.NAMENO = CN.NAMENO)
 
---SELECT @Error        = @@ERROR,
---       @RowsAffected = @@ROWCOUNT
+DECLARE @LogID        int,
+        @RowsAffected bigint,
+        @Error        int
 
---EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
---                                   @RowsAffected,
---                                   @Error,
---                                   1
---go
+EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+                                     N'201 - CaseNames',
+                                     NULL,
+                                     N'Case Names - CORRES REF: Instructor reference',
+                                     N'UPDATE CASENAME',
+                                     N'CASENAME',
+                                     1,
+                                     @LogID OUTPUT
+
+  UPDATE cn
+  set REFERENCENO = e.CASE_EXT_DATA
+  from 
+	BB..CASE_EXT e
+	join Conv_MappingCases cmc on e.CASE_REF COLLATE DATABASE_DEFAULT = cmc.BB_CASE_REF
+	join CASENAME cn on cn.CASEID = cmc.CASEID and cn.NAMETYPE = 'I'
+  where 
+	e.CASE_EXT_KEY = 'CORRES REF'
+	and e.CASE_EXT_DATA != ''
+ -- CASE_EXT_KEY = 'PO NUMBER'                                                
+
+SELECT @Error        = @@ERROR,
+       @RowsAffected = @@ROWCOUNT
+
+EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
+                                   @RowsAffected,
+                                   @Error,
+                                   1
+go
