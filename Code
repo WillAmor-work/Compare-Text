@@ -1,167 +1,330 @@
+/*******************************************************************************
+
+                            CPA Software Solutions
+                      
+
+			     Barker Brettell
+
+
+Description:
+Bring over the Cases from the Progressor db to Inprotech
+
+Modification History:
+30/11/2022		Created		D Hodges
+
+
+*******************************************************************************/
 use EMEABB
 go
 
 set concat_null_yields_null off
 go
 
---
--- Set up a couple of table codes for TM Type
---
---if not exists (select * from tablecodes where tablecode = 5114)
---	insert into TABLECODES(TABLECODE, TABLETYPE, DESCRIPTION)
---	values (5114, 51, 'Motion')
+--select * from BB..VAPPSALL
 
---if not exists (select * from tablecodes where tablecode = 5115)
---	insert into TABLECODES(TABLECODE, TABLETYPE, DESCRIPTION)
---	values (5115, 51, 'Other')
+--DECLARE @LogID        int,
+--        @RowsAffected bigint,
+--        @Error        int
 
-truncate table Conv_MappingCases 
---delete from Conv_MappingCases
+--EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+--                                     N'200 - Cases',
+--                                     NULL,
+--                                     N'Cases',
+--                                     N'Inserting into CASEFAMILY existing families',
+--                                     N'CASEFAMILY',
+--                                     1,
+--                                     @LogID OUTPUT
+
+--insert into CASEFAMILY (FAMILY,FAMILYTITLE)
+--select distinct cmc.FAMILY,f.FAMILYTITLE
+--from 
+--	Conv_MappingCases cmc
+--	join inpro81..CASES c on c.caseid = cmc.SY_CASEID
+--	join inpro81..CASEFAMILY f on c.FAMILY = f.FAMILY
+--	left join CASEFAMILY cf on cf.FAMILY = cmc.FAMILY
+--where cf.FAMILY is null
+----and cmc.FAMILY = 'P7058'
+
+--SELECT @Error        = @@ERROR,
+--       @RowsAffected = @@ROWCOUNT
+
+--EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
+--                                   @RowsAffected,
+--                                   @Error,
+--                                   1
+--go
+
+--DECLARE @LogID        int,
+--        @RowsAffected bigint,
+--        @Error        int
+
+--EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+--                                     N'200 - Cases',
+--                                     NULL,
+--                                     N'Cases',
+--                                     N'Inserting into CASEFAMILY new families',
+--                                     N'CASEFAMILY',
+--                                     1,
+--                                     @LogID OUTPUT
+
+--insert into CASEFAMILY (FAMILY,FAMILYTITLE)
+--select distinct cmc.FAMILY,cmc.FAMILY
+--from 
+--	Conv_MappingCases cmc
+--	left join inpro81..CASES c on c.caseid = cmc.SY_CASEID
+--	left join inpro81..CASEFAMILY f on c.FAMILY = f.FAMILY
+--	left join CASEFAMILY cf on cf.FAMILY = cmc.FAMILY
+--where cf.FAMILY is null and f.FAMILY is null
+
+--SELECT @Error        = @@ERROR,
+--       @RowsAffected = @@ROWCOUNT
+
+--EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
+--                                   @RowsAffected,
+--                                   @Error,
+--                                   1
+--go
+--
+-- insert into Cases
+--
+--12:28 before disable trigger
+ALTER TABLE CASES DISABLE TRIGGER CPAFieldsInsertedOnCases
+--ALTER TABLE CASES DISABLE TRIGGER tI_CASES_Integration
+ALTER TABLE CASES DISABLE TRIGGER InsertCASES_ids
+ALTER TABLE CASES DISABLE TRIGGER tI_CASES_Audit
+ALTER TABLE CASES DISABLE TRIGGER tI_UniqueCaseReference
+
+DECLARE @LogID        int,
+        @RowsAffected bigint,
+        @Error        int
+
+EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+                                     N'200 - Cases',
+                                     NULL,
+                                     N'Cases',
+                                     N'Inserting into Cases - Patents/Designs',
+                                     N'CASE',
+                                     1,
+                                     @LogID OUTPUT
+
+
+
+
+
+insert into CASES(CASEID, IRN, CASETYPE, COUNTRYCODE, PROPERTYTYPE, CASECATEGORY, SUBTYPE, TITLE, STATUSCODE, --LOCALCLASSES, INTCLASSES,
+		 ENTITYSIZE,PURCHASEORDERNO,CURRENTOFFICIALNO, OFFICEID) --, LOCALCLIENTFLAG, FAMILY, TYPEOFMARK, NOINSERIES, STEM)
+select	CMC.CASEID, 
+		substring(IRN, 1,30), 
+		CMC.CASETYPE,
+		CMC.COUNTRYCODE as COUNTRYCODE,
+		CMC.PROPERTYTYPE, 
+		case when CMC.CASECATEGORY = 'See Comment' then 'N'
+			else CMC.CASECATEGORY end as CASECATEGORY,
+		case when CMC.SUBTYPE = 'See Comment' then 'N'
+			else CMC.SUBTYPE end as SUBTYPE, 
+		substring(dbo.fn_StripNonASCII(CMC.TITLE), 1, 254) as TITLE,
+		CASE WHEN cmc.LIVEFLAG != 'Y' THEN 19 --Dead on Conversion 
+			 ELSE NULL END as STATUSCODE,
+		--LOCALCLASSES,			--Local Classes
+		--INTCLASSES,			-- INT Classes
+		CMC.ENTITYSIZE,
+		PURCHASEORDERNO,
+		case when REGNO is not null and REGNO <> ' ' then substring(REGNO, 1, 36)
+			else substring(APPNO, 1, 36) end,							-- Current Official No.
+		OFFICEID --Office ID 
+		--null,			-- Local Client Flag
+		--CMC.FAMILY,			-- Family
+		--TYPEOFMARK,		-- Type Of Mark
+		--NULL
+		--STEM
+from	 Conv_MappingCases CMC
+--where PROPERTYTYPE != ''
+--left join COUNTRY c on CMC.COUNTRYCODE = c.COUNTRYCODE where c.COUNTRYCODE is null
+--where IRN = 'ZMT5693W'
+
+
+--select * from conv_mappingcases where propertytype = ''
+
+SELECT @Error        = @@ERROR,
+       @RowsAffected = @@ROWCOUNT
+
+EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
+                                   @RowsAffected,
+                                   @Error,
+                                   1
 go
 
-declare @caseidstart INT
-set @caseidstart = isnull((select min(caseid)-1 from CASES),-1)
+ALTER TABLE CASES ENABLE TRIGGER CPAFieldsInsertedOnCases
+--ALTER TABLE CASES ENABLE TRIGGER tI_CASES_Integration
+ALTER TABLE CASES ENABLE TRIGGER InsertCASES_ids
+ALTER TABLE CASES ENABLE TRIGGER tI_CASES_Audit
+ALTER TABLE CASES ENABLE TRIGGER tI_UniqueCaseReference
 
---DBCC checkident ('Conv_MappingCases', reseed)
-DBCC checkident ('Conv_MappingCases', reseed, @caseidstart)
+
+--select * from Conv_STATUSMAP
+
+
+
+
+DECLARE @LogID        int,
+        @RowsAffected bigint,
+        @Error        int
+
+EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+                                     N'200 - Cases',
+                                     NULL,
+                                     N'Cases',
+                                     N'Inserting applications in Property table',
+                                     N'PROPERTY',
+                                     1,
+                                     @LogID OUTPUT
+
+insert into PROPERTY(CASEID, BASIS, RENEWALSTATUS) --, NOOFCLAIMS,RENEWALNOTES)
+select	--*,
+	CMC.CASEID,
+	BASIS,
+	CASE WHEN cmc.LIVEFLAG != 'Y' THEN -226 
+		 ELSE NULL END as RENEWALSTATUS
+	--rs.STATUSCODE as RENEWALSTATUS,
+	--p.NOOFCLAIMS,
+	--p.RENEWALCYCLE,
+	--p.RENEWALNOTES
+--select distinct p.RENEWALSTATUS
+from	 Conv_MappingCases CMC
+
+where	cmc.CASETYPE = 'A'
+	--and p.RENEWALSTATUS is not null
+
+SELECT @Error        = @@ERROR,
+       @RowsAffected = @@ROWCOUNT
+
+EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
+                                   @RowsAffected,
+                                   @Error,
+                                   1
 go
---DBCC checkident ('Conv_MappingCases')
+--select * from property
+--select * from BB..VAPPSALL2 where STATUSNOT_AE is null
+--select * from status
 
---insert into Conv_MappingCases (IRN,SY_CASEID,CASETYPE,PROPERTYTYPE) values ('blank',0,'x','x')
---select * from Conv_MappingCases
+--MOVED TO 150 script
 
+--DECLARE @LogID        int,
+--        @RowsAffected bigint,
+--        @Error        int
 
-IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'conv_insert')
-  DROP TABLE dbo.conv_insert
-GO
+--EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+--                                     N'200 - Cases',
+--                                     NULL,
+--                                     N'Cases',
+--                                     N'Update Entity Size - Default to large',
+--                                     N'CASES',
+--                                     1,
+--                                     @LogID OUTPUT
 
-
-
-DROP TABLE IF EXISTS dbo.Conv_insert
-
-select 
-	distinct c.CASE_REF
-into Conv_insert
-from BB..VAPPSALL2 c
-
-
-
-
-
-insert into Conv_MappingCases(IRN, PROPERTYTYPE, CASETYPE, CASECATEGORY, SUBTYPE, BB_CASE_REF, STEM, FAMILY, COUNTRYCODE, TITLE, APPNO, PUBNO, REGNO,BASIS,OFFICEID,ENTITYSIZE,LIVEFLAG,PURCHASEORDERNO)
-		--FiLINGDATE, GRANTDATE, PUBDATE, ALLOWANCEDATE, 
-		 --LOCALCLASSES,INTCLASSES,TYPEOFMARK,EARLIESTPRIORITYDATE)
-select distinct
-		rtrim(c.CASE_REF) as IRN,
-		CASE when c1.APPS_CASE_TYPE = 'P' and c1.IC_CODE like '%-UM%' then 'U'
-			when ctm.CASETYPE = 'F' Then 
-				CASE When p.NAMECODE in (
-					'ADJ', 'ADT', 'AMG', 'AMV', 'ASW', 'AVB', 'CHD', 'CJB', 'CLJ', 'DHP', 'DJC', 'DJH', 'HSJ', 'JA', 'JDM', 'JL', 'KSH', 'LH', 'LKH', 'LPT', 'NCB', 'NGK', 'OJP', 'PJC', 'PMM', 'RET', 'RPA', 'SFA', 'SJR', 'SPK', 'TG', 'TH', 'UPC', 'WMD', 'YCJ', 'ZZZ', 'SR', 'XJL', 'BP', 'DAW', 'DJB', 'SLF', 'DMP', 'GML', 'JB', 'JM', 'JOK', 'JPP', 'MG', 'SAF', 'CSS') Then 'P'
-					When p.NAMECODE in ('AXB', 'CAW', 'ARL', 'IJP', 'JLM', 'LAW', 'LCK', 'LHE', 'LMB', 'LMC', 'LP', 'RJN', 'RSF', 'SXL', 'TAA', 'RSJ', 'RSK', 'SJL', 'CB', 'RGH', 'IH', 'JAH', 'JK', 'LND', 'RD', 'RJL', 'RNHC', 'SP', 'BRM', 'WBB') Then 'T' 
-					else ''
-				END
-			 else ctm.PROPERTYTYPE 
-		END as PROPERTYTYPE,
-		ctm.CASETYPE,
-		ccm.CASECATEGORY,
-		null as SUBTYPE, 
-		rtrim(c.CASE_REF),
-		null as STEM,
-		null as FAMILY,
-		cm.COUNTRYCODE,
-		c.SHORT_TITLE,
-		adnna.APPS_DN_NO as APPNO,
-		adnnp.APPS_DN_NO as PUBNO,
-		adnnr.APPS_DN_NO as REGNO,
-		c1.P_CLAIMED as BASIS,
-		CASE WHEN p.NAMECODE in ('CHD','HSJ','LHE','LMB','SFA' ) THEN 3 ELSE 2 END
-		as OFFICEID,
-		--isnull(CTCM.CASETYPE,ctm.casetype) as CASETYPE, --Take casecategory casetype mapping first if exists, else casetype mapping
-		CASE
-			when small.CASE_EXT_DATA = 'Y' then 2604 
-			when micro.CASE_EXT_DATA = 'Y' then -42846999
-			else 2601 
-		END as ENTITYSIZE,
-		c.STATUSNOT_AE as LIVEFLAG,
-		po_number.CASE_EXT_DATA as PURCHASEORDERNO
-
---select c.CASE_REF,APPS_DN_NO
---select * 
-	from BB..VAPPSALL2 c 
-	join conv_insert i on c.CASE_REF = i.CASE_REF
-	join BB..VAPPSALL c1 on c.CASE_REF = c1.CASE_REF
-	join CONV_CASETYPEMAP ctm on ctm.BB_CASETYPE = c1.APPS_CASE_TYPE COLLATE DATABASE_DEFAULT
-	left join CONV_CASECATMAP ccm on ccm.BB_PROPERTYTYPE = c1.APPS_CASE_TYPE COLLATE DATABASE_DEFAULT and ccm.BB_IC_CODE = c.IC_CODE COLLATE DATABASE_DEFAULT and ccm.BB_COUNTRY_CODE  = c.COUNTRY_CODE COLLATE DATABASE_DEFAULT 
-	join CONV_COUNTRYMAP cm on cm.BB_COUNTRY_CODE = c.COUNTRY_CODE COLLATE DATABASE_DEFAULT
-
-	left join (APPS_DN_Normalised adnna 
-				join CONV_NUMBERTYPEMAP ntm on ntm.BB_CASETYPE = adnna.APPS_CASE_TYPE and ntm.BB_IC_NOS_DESC = adnna.IC_NOS_DESC and ntm.NUMBERTYPE = 'A' and adnna.APPS_DN_NO is not null)
-	on c.CASE_REF COLLATE DATABASE_DEFAULT = adnna.CASE_REF  and adnna.APPS_CASE_TYPE  = c1.APPS_CASE_TYPE COLLATE DATABASE_DEFAULT --and adnna.IC_NOS_DESC = 'Application'
-
-	left join (APPS_DN_Normalised adnnp 
-				join CONV_NUMBERTYPEMAP ntmp on ntmp.BB_CASETYPE = adnnp.APPS_CASE_TYPE and ntmp.BB_IC_NOS_DESC = adnnp.IC_NOS_DESC and ntmp.NUMBERTYPE = 'P' and adnnp.APPS_DN_NO is not null)
-	on c.CASE_REF COLLATE DATABASE_DEFAULT = adnnp.CASE_REF  and adnnp.APPS_CASE_TYPE  = c1.APPS_CASE_TYPE COLLATE DATABASE_DEFAULT --and adnna.IC_NOS_DESC = 'Application'
-
-	left join (APPS_DN_Normalised adnnr 
-				join CONV_NUMBERTYPEMAP ntmr on ntmr.BB_CASETYPE = adnnr.APPS_CASE_TYPE and ntmr.BB_IC_NOS_DESC = adnnr.IC_NOS_DESC and ntmr.NUMBERTYPE = 'R' and adnnr.APPS_DN_NO is not null)
-	on c.CASE_REF COLLATE DATABASE_DEFAULT = adnnr.CASE_REF  and adnnr.APPS_CASE_TYPE  = c1.APPS_CASE_TYPE COLLATE DATABASE_DEFAULT --and adnna.IC_NOS_DESC = 'Application'
+--Update C
+--set		ENTITYSIZE =	case
+--							when small.CASE_EXT_DATA = 'Y' then 2604 
+--							when micro.CASE_EXT_DATA = 'Y' then -42846999
+--							else 2601 
+--						end 
+----select 
+----	cmc.CASEID,
+----	micro.CASE_EXT_DATA as MICRO,
+----	small.CASE_EXT_DATA as SMALL,
+----	case
+----		when small.CASE_EXT_DATA = 'Y' then 2604 
+----		when micro.CASE_EXT_DATA = 'Y' then -42846999
+----		else 2601 
+----	end as ENTITYSIZE
+--from	
+--	CASES C
+--	join Conv_MappingCases CMC on (C.CASEID = CMC.CASEID)
+--	left join BB..CASE_EXT small on small.CASE_REF COLLATE DATABASE_DEFAULT = cmc.BB_CASE_REF and small.CASE_EXT_KEY = 'SMALL ENTITY' and small.CASE_EXT_DATA != ''
+--	left join BB..CASE_EXT micro on micro.CASE_REF COLLATE DATABASE_DEFAULT = cmc.BB_CASE_REF and micro.CASE_EXT_KEY = 'MICRO ENTITY' and micro.CASE_EXT_DATA != ''
 	
-	join Conv_NAME p on c1.CSE_PARTNER COLLATE DATABASE_DEFAULT = p.NAMECODE
 
-	left join BB..CASE_EXT small on small.CASE_REF COLLATE DATABASE_DEFAULT = c.CASE_REF and small.CASE_EXT_KEY = 'SMALL ENTITY' and small.CASE_EXT_DATA != ''
-	left join BB..CASE_EXT micro on micro.CASE_REF COLLATE DATABASE_DEFAULT = c.CASE_REF and micro.CASE_EXT_KEY = 'MICRO ENTITY' and micro.CASE_EXT_DATA != ''
-	left join BB..CASE_EXT po_number on po_number.CASE_REF COLLATE DATABASE_DEFAULT = c.CASE_REF and po_number.CASE_EXT_KEY = 'PO NUMBER' and po_number.CASE_EXT_DATA != ''
+--SELECT @Error        = @@ERROR,
+--       @RowsAffected = @@ROWCOUNT
 
---where c.CASE_REF = 'P124796.EPPD1'
---group by c.CASE_REF,APPS_DN_NO
---having count(*)>1
-
----TEMP FIX FOR BLANK PROPERTY TYPES - cases can't be inserted
-delete from Conv_MappingCases where propertytype = ''
-
---	select * from BB..APPS_DN_Normalised
-
---where i.CASEID = -30757 --30047
-
---34196
---34812 +1 additional
-
---where smep.caseid is not null
---where c.TYPEOFMARK is not null
---34196
+--EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
+--                                   @RowsAffected,
+--                                   @Error,
+--                                   1
+--go
 
 
---select * from Conv_MappingCases m
---join cases c on m.CASEID = c.CASEID 
-
---select * from Conv_TABLECODESMAP 
+--	select 	* from TABLECODES where tabletype  = 26
 
 
 
+--
+-- For Related Cases
+-- If the cases is related to an existing case on the database set the RelatedCaseid column
+--
 
+--DECLARE @LogID        int,
+--        @RowsAffected bigint,
+--        @Error        int
 
-declare @ListofMultipleCase as table
-		(IRN			nvarchar(30) not null,
-		 CASEID			int not null, 
-		NewIRn			nvarchar(30) null
-		)
+--EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+--                                     N'200 - Cases',
+--                                     NULL,
+--                                     N'RelatedCases',
+--                                     N'Updating external relationships if case exists',
+--                                     N'CASES',
+--                                     1,
+--                                     @LogID OUTPUT
 
-insert into @ListofMultipleCase
-select CMC1.IRN, 
-		CMC1.CASEID,
-		substring((CMC1.IRN +'-'+ replicate('0',3-LEN(ROW_NUMBER() over (partition by CMC1.IRN order by CMC1.IRN)))+ convert(varchar, (ROW_NUMBER() over (partition by CMC1.IRN order by CMC1.IRN)))), 1,30)
-from (
-		select	IRN
-		from	Conv_MappingCases CMC
-		group by IRN
-		having count(*) > 1) X
-join	Conv_MappingCases CMC1 on (X.IRN = CMC1.IRN)
+--Update	RC
+--set		RELATEDCASEID = C.CASEID,
+--		OFFICIALNUMBER = NULL,
+--		COUNTRYCODE = NULL
+----select *
+--from	RELATEDCASE RC
+--join	CASES C1 on (RC.CASEID = C1.CASEID)
+--join	OFFICIALNUMBERS O on (RC.OFFICIALNUMBER = O.OFFICIALNUMBER
+--					and		RC.CASEID <> O.CASEID)
+--join	CASES C on (RC.COUNTRYCODE = C.COUNTRYCODE
+--				and		RC.CASEID <> C.CASEID
+--				and		O.CASEID = C.CASEID)
+--join	Conv_MappingCases CMC on (C.CASEID = CMC.CASEID)
+--where	RC.RELATEDCASEID is null
+--and		RC.OFFICIALNUMBER is not null
 
-update	CMC
-set		IRN = LMC.NewIRn
-from	Conv_MappingCases CMC
-join	@ListofMultipleCase LMC on (CMC.CASEID = LMC.CASEID)
-go
+--SELECT @Error        = @@ERROR,
+--       @RowsAffected = @@ROWCOUNT
 
+--EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
+--                                   @RowsAffected,
+--                                   @Error,
+--                                   1
+--go
 
---select * from Conv_MappingCases where irn = '-2344230'
+--DECLARE @LogID        int,
+--        @RowsAffected bigint,
+--        @Error        int
+
+--EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+--                                     N'200 - Cases',
+--                                     NULL,
+--                                     N'NameTypeClassification',
+--                                     N'Identify where name is being used',
+--                                     N'NAMES',
+--                                     1,
+--                                     @LogID OUTPUT
+
+--insert into NAMETYPECLASSIFICATION(NAMENO, NAMETYPE, ALLOW)
+--select	distinct CTT.NAMENO,  CN.NAMETYPE, 1
+--from	Conv_NAME CTT
+--join	NAME N on (CTT.NAMENO = N.NAMENO)
+--join	CASENAME CN on (N.NAMENO = CN.NAMENO)
+
+--SELECT @Error        = @@ERROR,
+--       @RowsAffected = @@ROWCOUNT
+
+--EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
+--                                   @RowsAffected,
+--                                   @Error,
+--                                   1
+--go
