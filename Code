@@ -1,0 +1,33 @@
+use EMEABB
+go
+
+disable trigger [tU_CASES_Classes] on CASES
+go
+disable trigger [ti_CASES_Classes] on CASES
+go
+
+disable trigger [tI_OFFICIALNUMBERS2] on OFFICIALNUMBERS  
+go
+disable trigger [CPAFieldsInsertedOnOfficialNo] on OFFICIALNUMBERS  
+go
+disable trigger [tU_OFFICIALNUMBERS2] on OFFICIALNUMBERS 
+go
+
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'TempAuditLogTables')
+  DROP TABLE dbo.TempAuditLogTables
+GO
+
+create table TempAuditLogTables
+(
+	[TABLENAME] [nvarchar](50) NOT NULL,
+	[LOGFLAG] [bit] NOT NULL,
+);
+
+insert into TempAuditLogTables (TableName, LogFlag)
+select TableName, LogFlag from AUDITLOGTABLES;
+
+update AUDITLOGTABLES
+   set LogFlag = 0;
+GO
+
+--3:21
