@@ -7,13 +7,14 @@
 
 
 Description:
-Import Case Names from Progressor to Inprotech database
+Inserting names from Progressor to Inprotech database
 
 Modification History:
-19/01/2023		Created						D Hodges
+15/06/2022		Created						D Hodges
 
 
 *******************************************************************************/
+
 use EMEABB
 go
 
@@ -21,106 +22,208 @@ set concat_null_yields_null off
 go
 
 
-DECLARE @LogID        int,
-        @RowsAffected bigint,
-        @Error        int
 
-EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'201 - CaseNames',
-                                     NULL,
-                                     N'Case Names',
-                                     N'Insert CASENAME',
-                                     N'CASENAME',
-                                     1,
-                                     @LogID OUTPUT
+--select * from NAME
+--select * from Conv_ADDRESS order by 1 desc
+truncate table Conv_ADDRESS
+Go
 
-
-insert into CASENAME(CASEID, NAMETYPE, SEQUENCE, NAMENO, INHERITED, CORRESPONDNAME, DERIVEDCORRNAME, REFERENCENO, ADDRESSCODE)
+--Addresses
+insert into Conv_ADDRESS (BB_ADDRESSCODE,STREET1,STREET2,CITY,STATE,POSTCODE,COUNTRYCODE)
 select 
-	cmc.CASEID,
-	ntm.NAMETYPE,
-	row_number() over (partition by cmc.CASEID, ntm.NAMETYPE order by c.SN_CCD_CODE )-1 as SEQUENCE,
-	cn.NAMENO,
-	0 as INHERITED,
-	CASE WHEN ntm.NAMETYPE = 'I' THEN mcn.NAMENO ELSE NULL END as CORRESPONDNAME,
-	0 as DERIVEDCORRNAME,
-	null as REFERENCENO,
-	cn.ADDRESSCODE
+	GD_CST_CODE,
+	--GD_CST_ADD1 as STREET1,
+	--GD_CST_ADD2 as STREET2,
+	CASE WHEN GD_CST_ADD1 != '' THEN GD_CST_ADD1+CHAR(13)+CHAR(10) ELSE '' END+
+	CASE WHEN GD_CST_ADD2 != '' THEN GD_CST_ADD2+CHAR(13)+CHAR(10) ELSE '' END+
+	CASE WHEN GD_CST_ADD3 != '' THEN GD_CST_ADD3+CHAR(13)+CHAR(10) ELSE '' END+
+	CASE WHEN GD_CST_ADD4 != '' THEN GD_CST_ADD4 ELSE '' END+
+	CASE WHEN len(GD_CST_ADD7) >10 THEN CHAR(13)+CHAR(10)+GD_CST_ADD7 ELSE '' END as STREET1,
+
+	CASE WHEN len(GD_CST_ADD6) >20 THEN GD_CST_ADD6+CHAR(13)+CHAR(10) ELSE '' END +
+	CASE WHEN len(GD_CST_ADD5) >30 THEN GD_CST_ADD5 ELSE '' END as STREET2,
+
+	CASE WHEN len(GD_CST_ADD5) >30 THEN NULL ELSE GD_CST_ADD5 END as CITY,
+	CASE WHEN len(GD_CST_ADD6) >20 THEN NULL ELSE GD_CST_ADD6 END as STATE,
+	CASE WHEN len(GD_CST_ADD7) >10 THEN NULL ELSE GD_CST_ADD7 END as POSTCODE,
+	--GD_CST_ADD8,
+	isnull(cm.COUNTRYCODE,'ZZZ') as COUNTRYCODE
+	--select distinct GD_CST_ADD8 
 from
-	Conv_MappingCases cmc
-	join BB..SN_CCD c on c.CASE_REF COLLATE DATABASE_DEFAULT = cmc.BB_CASE_REF
-	join Conv_NAME cn on cn.NA_REFERENCE = c.SN_CCD_CODE COLLATE DATABASE_DEFAULT
-	join Conv_NAMETYPEMAP ntm on ntm.BB_NAMETYPE = c.SN_CCD_TYPE  COLLATE DATABASE_DEFAULT --801627
-	left join BB..SN_CCD mc on mc.CASE_REF COLLATE DATABASE_DEFAULT = cmc.BB_CASE_REF and mc.SN_CCD_TYPE = 'CLI M.C.'
-	left join Conv_NAME mcn on mcn.NA_REFERENCE = mc.SN_CCD_CODE COLLATE DATABASE_DEFAULT
---select * from BB..SN_CCTP has ordering by property type?
+	BB..GD_CST a
+	left join Conv_COUNTRYMAP cm on cm.BB_COUNTRYDESC = 
+												CASE	WHEN a.GD_CST_ADD8 = 'USA' THEN 'United States' 
+														WHEN a.GD_CST_ADD8 = 'The Netherlands' THEN 'Netherlands' 
+														else a.GD_CST_ADD8 COLLATE DATABASE_DEFAULT end
+--where cm.COUNTRYCODE is null and a.GD_CST_ADD8 != ''
+--where GD_CST.GD_CST_CODE
 
-
-SELECT @Error        = @@ERROR,
-       @RowsAffected = @@ROWCOUNT
-
-EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
-                                   @RowsAffected,
-                                   @Error,
-                                   1
+truncate table Conv_NAME
 go
 
-DECLARE @LogID        int,
-        @RowsAffected bigint,
-        @Error        int
-
-EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'201 - CaseNames',
-                                     NULL,
-                                     N'Case Names - BillPercentage for Debtors',
-                                     N'Update CASENAME',
-                                     N'CASENAME',
-                                     1,
-                                     @LogID OUTPUT
-
-update casename 
-set BILLPERCENTAGE = 100.00
-where nametype in ('D', 'Z') 
-and SEQUENCE = 0
-
-SELECT @Error        = @@ERROR,
-       @RowsAffected = @@ROWCOUNT
-
-EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
-                                   @RowsAffected,
-                                   @Error,
-                                   1
-go
-
-
-DECLARE @LogID        int,
-        @RowsAffected bigint,
-        @Error        int
-
-EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'201 - CaseNames',
-                                     NULL,
-                                     N'Case Names - PARTNERS',
-                                     N'Insert CASENAME',
-                                     N'CASENAME',
-                                     1,
-                                     @LogID OUTPUT
-
-insert into CASENAME(CASEID, NAMETYPE, SEQUENCE, NAMENO, INHERITED, CORRESPONDNAME, DERIVEDCORRNAME, REFERENCENO, ADDRESSCODE)
+--NAMES
+insert into Conv_NAME (NA_REFERENCE,NAMECODE,ENTITYTYPE,CLIENTINDICATOR,STAFFINDICATOR,NAME,FIRSTNAME,REMARKS,FORMALSALUTATION,NATIONALITY,ADDRESSCODE)
 select 
-	cmc.CASEID,
+	n.NA_REFERENCE,
+	n.NA_REFERENCE as NAMECODE,
+	CASE WHEN NA_FAO = '' and a.GD_CST_FNAME not like 'Mr %' 
+						  and a.GD_CST_FNAME not like 'Mr.%'
+						  and a.GD_CST_FNAME not like 'Miss %'
+						  and a.GD_CST_FNAME not like 'Miss.%'
+						  and a.GD_CST_FNAME not like 'Mrs %'
+						  and a.GD_CST_FNAME not like 'Mrs.%'
+						  and a.GD_CST_FNAME not like 'Dr %'
+						  and a.GD_CST_FNAME not like 'Dr.%'
+						  and a.GD_CST_FNAME not like 'Sir %'
+						  and a.GD_CST_FNAME not like 'Sirs %'
+						  and a.GD_CST_FNAME not like 'Ms %'
+						  and a.GD_CST_FNAME not like 'Ms.%'
+						  and a.GD_CST_FNAME not like 'Prof %'
+						  and a.GD_CST_FNAME not like 'Prof.%'
+						  and a.GD_CST_FNAME not like 'Professor %'
+						  and a.GD_CST_FNAME not like 'Professor.%'
+		THEN 'O' ELSE 'I' END as ENTITYTYPE, --I or O
+	null,
+	null,
+	CASE WHEN NA_FAO = '' THEN TRIM(a.GD_CST_FNAME) ELSE TRIM(NA_FAO) END as NAME,
+	--CASE WHEN NA_FAO = '' THEN a.GD_CST_RNAME ELSE NULL END as FIRSTNAME,
+	null as FIRSTNAME,
+	NA_INAME as REMARKS,
+	NA_SALUTE as FORMALSALUTATION,
+	cm.COUNTRYCODE as NATIONALITY,
+	ca.ADDRESSCODE as ADDRESSCODE
+	--select *
+from
+	BB..NA_ADD n
+	left join BB..GD_CST a on n.NA_CST_CODE = a.GD_CST_CODE
+	left join Conv_COUNTRYMAP cm on cm.BB_COUNTRY_CODE = n.NA_IC_CODE COLLATE DATABASE_DEFAULT
+	left join Conv_ADDRESS ca on ca.BB_ADDRESSCODE = n.NA_CST_CODE
+
+
+--select *
+--from
+--	BB..NA_ADD n
+--	left join BB..GD_CST a on n.NA_CST_CODE = a.GD_CST_CODE
+--	--left join Conv_COUNTRYMAP cm on cm.BB_COUNTRY_CODE = n.NA_IC_CODE COLLATE DATABASE_DEFAULT
+
+--select * from Conv_NAME where ltrim(rtrim(name)) not like '%' + ltrim(rtrim(FIRSTNAME)) + '%'
+
+Update n
+set CLIENTINDICATOR = 'Y'
+--select *
+from  Conv_NAME n
+join BB..NAME_EXT e on n.NA_REFERENCE = e.NA_REFERENCE COLLATE DATABASE_DEFAULT and NA_EXT_KEY = 'A_ACLIENT' and NA_EXT_DATA = 'Y'
+
+Update n
+set AGENTFLAG = 1
+--select *
+from  Conv_NAME n
+join BB..NAME_EXT e on n.NA_REFERENCE = e.NA_REFERENCE COLLATE DATABASE_DEFAULT and NA_EXT_KEY = 'A_AGENT' and NA_EXT_DATA = 'Y'
+
+
+
+
+
+
+--PARTNERS(staff)
+insert into Conv_NAME (NAMECODE,ENTITYTYPE,CLIENTINDICATOR,STAFFINDICATOR,NAME,FIRSTNAME,NATIONALITY,EMAIL,USEDASFLAG)
+ select 
+	SNS_PARTNER as NAMECODE,
+	'I' as ENTITYTYPE,
+	'N' as CLIENTINDICATOR,
+	'Y' as STAFFINDICATOR,
+	TRIM(SNS_LASTNAME) as NAME,
+	TRIM(SNS_FIRSTNAME) as FIRSTNAME,
+	cm.COUNTRYCODE as NATIONALITY,
+	SNS_EMAIL as EMAIL,
+	3 as USEDASFLAG --Individual and staff
+	--select *
+ from 
+	BB..PARTNERS p
+	left join Conv_COUNTRYMAP cm on cm.BB_COUNTRY_CODE = p.SNS_NATIONALITY COLLATE DATABASE_DEFAULT
+
+UPDATE n
+set USEDASFLAG =
+--select *,
+	CASE WHEN ENTITYTYPE = 'I' and CLIENTINDICATOR = 'Y' THEN 5
+		 WHEN ENTITYTYPE = 'I' and isnull(STAFFINDICATOR,'N') !='Y' THEN 1
+		 WHEN ENTITYTYPE = 'I' and isnull(STAFFINDICATOR,'N') = 'Y' THEN 3
+		 WHEN ENTITYTYPE = 'O' and CLIENTINDICATOR = 'Y' THEN 4
+		 WHEN ENTITYTYPE = 'O' THEN 0 
+		 ELSE NULL END --as USEDASFLAG
+from
+	Conv_NAME n
+
+INSERT INTO ADDRESS (ADDRESSCODE,STREET1,STREET2,CITY,STATE,POSTCODE,COUNTRYCODE)
+select 
+	ADDRESSCODE,STREET1,STREET2,CITY,STATE,POSTCODE,COUNTRYCODE
+from 
+	Conv_ADDRESS a
+
+Insert into NAME (NAMENO,NAMECODE,NAME,FIRSTNAME,NATIONALITY,POSTALADDRESS,STREETADDRESS,USEDASFLAG,REMARKS,SEARCHKEY1)
+select
+	NAMENO,
+	NAMECODE,
+	NAME,
+	FIRSTNAME,
+	NATIONALITY,
+	ADDRESSCODE as POSTALADDRESS,
+	ADDRESSCODE as STREETADDRESS,
+	USEDASFLAG,
+	REMARKS,
+	SUBSTRING(NAME, 1, 20) as SEARCHKEY1
+from
+	Conv_NAME
+
+
+insert into ASSOCIATEDNAME (NAMENO,RELATIONSHIP,SEQUENCE,RELATEDNAME )
+select 
+	cn.NAMENO,
 	'EMP',
-	row_number() over (partition by cmc.CASEID order by p.NAMENO )-1 as SEQUENCE,
-	p.NAMENO,
-	0 as INHERITED,
-	null as CORRESPONDNAME,
-	0 as DERIVEDCORRNAME,
-	null as REFERENCENO,
-	p.ADDRESSCODE
-from 
-	Conv_MappingCases cmc
-	join BB..APPSALL a on cmc.BB_CASE_REF = a.CASE_REF COLLATE DATABASE_DEFAULT
-	join Conv_NAME p on a.CSE_PARTNER COLLATE DATABASE_DEFAULT = p.NAMECODE
+	ROW_NUMBER() OVER(PARTITION BY cn.NAMENO,cen.NAMENO ORDER BY cn.NAMENO,cen.NA_REFERENCE DESC)-1 as SEQUENCE,
+	cen.NAMENO
+	--ee.NA_EXT_DATA,*
+from
+	Conv_NAME cn
+	join BB..NA_ADD n on cn.NA_REFERENCE = n.NA_REFERENCE COLLATE DATABASE_DEFAULT
+	join BB..NAME_EXT e on e.NA_REFERENCE = n.NA_REFERENCE and e.NA_EXT_KEY = 'A_ACLIENT' and e.NA_EXT_DATA = 'Y'
+
+	join BB..NA_ADD en on  n.NA_CST_CODE = en.NA_CST_CODE and en.NA_REFERENCE != n.NA_REFERENCE
+	--left join  BB..NAME_EXT ee on ee.NA_REFERENCE = en.NA_REFERENCE and ee.NA_EXT_KEY = 'A_ACLIENT' and ee.NA_EXT_DATA = 'Y'
+	join Conv_NAME cen on cen.NA_REFERENCE = en.NA_REFERENCE COLLATE DATABASE_DEFAULT
+--where
+--n.NA_REFERENCE = 'T00477'
+--	n.NA_REFERENCE = 'U01349'
+
+
+--select * from Conv_NAME
+
+--select * from NAMEADDRESSSNAP
+--select * from address
+
+DECLARE @LogID        int,
+        @RowsAffected bigint,
+        @Error        int
+
+EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+                                     N'100 - Names',
+                                     NULL,
+                                     N'NAME',
+                                     N'Linking Addresses to Postal Addresses',
+                                     N'NAMEADDRESS',
+                                     1,
+                                     @LogID OUTPUT
+
+insert into NAMEADDRESS (NAMENO, ADDRESSTYPE, ADDRESSCODE, OWNEDBY)
+select 
+	NAMENO,
+	301 as ADDRESSTYPE, 
+	ADDRESSCODE,
+	1
+from
+	Conv_NAME cn
+where ADDRESSCODE is not null
+
 
 SELECT @Error        = @@ERROR,
        @RowsAffected = @@ROWCOUNT
@@ -136,29 +239,392 @@ DECLARE @LogID        int,
         @Error        int
 
 EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'201 - CaseNames',
+                                     N'100 - Names',
                                      NULL,
-                                     N'Case Names - PARTNERS SIG',
-                                     N'Insert CASENAME',
-                                     N'CASENAME',
+                                     N'NAME',
+                                     N'Linking Addresses to Street Addresses',
+                                     N'NAMEADDRESS',
                                      1,
                                      @LogID OUTPUT
 
-insert into CASENAME(CASEID, NAMETYPE, SEQUENCE, NAMENO, INHERITED, CORRESPONDNAME, DERIVEDCORRNAME, REFERENCENO, ADDRESSCODE)
+insert into NAMEADDRESS (NAMENO, ADDRESSTYPE, ADDRESSCODE, OWNEDBY)
 select 
-	cmc.CASEID,
-	'SIG',
-	row_number() over (partition by cmc.CASEID order by p.NAMENO )-1 as SEQUENCE,
-	p.NAMENO,
-	0 as INHERITED,
-	null as CORRESPONDNAME,
-	0 as DERIVEDCORRNAME,
-	null as REFERENCENO,
-	p.ADDRESSCODE
+	NAMENO,
+	302 as ADDRESSTYPE, 
+	ADDRESSCODE,
+	1
+from
+	Conv_NAME cn
+where ADDRESSCODE is not null
+
+SELECT @Error        = @@ERROR,
+       @RowsAffected = @@ROWCOUNT
+
+EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
+                                   @RowsAffected,
+                                   @Error,
+                                   1
+go
+
+DECLARE @LogID        int,
+        @RowsAffected bigint,
+        @Error        int
+
+EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+                                     N'100 - Names',
+                                     NULL,
+                                     N'NAME',
+                                     N'Inserting into Organisation',
+                                     N'ORGANISATION',
+                                     1,
+                                     @LogID OUTPUT
+
+insert into ORGANISATION(NAMENO, VATNO, PARENT, INCORPORATED)
+select 
+	NAMENO,
+	NULL,
+	NULL,
+	NULL
 from 
-	Conv_MappingCases cmc
-	join BB..APPSALL a on cmc.BB_CASE_REF = a.CASE_REF COLLATE DATABASE_DEFAULT
-	join Conv_NAME p on a.CSE_PARTNER COLLATE DATABASE_DEFAULT = p.NAMECODE
+	Conv_NAME
+where
+	ENTITYTYPE = 'O'
+
+SELECT @Error        = @@ERROR,
+       @RowsAffected = @@ROWCOUNT
+
+EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
+                                   @RowsAffected,
+                                   @Error,
+                                   1
+go
+
+DECLARE @LogID        int,
+        @RowsAffected bigint,
+        @Error        int
+
+EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+                                     N'100 - Names',
+                                     NULL,
+                                     N'NAME',
+                                     N'Inserting into Individual',
+                                     N'INDIVIDUAL',
+                                     1,
+                                     @LogID OUTPUT
+
+insert into INDIVIDUAL(NAMENO)
+select
+	NAMENO
+from
+	Conv_NAME
+where
+	ENTITYTYPE = 'I'
+
+
+SELECT @Error        = @@ERROR,
+       @RowsAffected = @@ROWCOUNT
+
+EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
+                                   @RowsAffected,
+                                   @Error,
+                                   1
+go
+
+DECLARE @LogID        int,
+        @RowsAffected bigint,
+        @Error        int
+
+EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+                                     N'100 - Names',
+                                     NULL,
+                                     N'NAME',
+                                     N'Inserting into Emloyee',
+                                     N'EMPLOYEE',
+                                     1,
+                                     @LogID OUTPUT
+
+insert into EMPLOYEE(EMPLOYEENO,SIGNOFFNAME,ABBREVIATEDNAME)
+select	
+	NAMENO,
+	CASE WHEN FIRSTNAME is null THEN NAME
+	ELSE FIRSTNAME + ' ' + NAME	END SIGNOFFNAME,
+	NAMECODE as ABBREVIATEDNAME
+from
+	Conv_NAME cn
+where
+	STAFFINDICATOR = 'Y'
+
+SELECT @Error        = @@ERROR,
+       @RowsAffected = @@ROWCOUNT
+
+EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
+                                   @RowsAffected,
+                                   @Error,
+                                   1
+go
+
+DECLARE @LogID        int,
+        @RowsAffected bigint,
+        @Error        int
+
+EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+                                     N'100 - Names',
+                                     NULL,
+                                     N'NAME',
+                                     N'Inserting Staff into NAMETYPECLASSIFICATION',
+                                     N'NAMETYPECLASSIFICATION',
+                                     1,
+                                     @LogID OUTPUT
+
+--select * from NAMETYPECLASSIFICATION
+insert into NAMETYPECLASSIFICATION(NAMENO,NAMETYPE,ALLOW)
+select	
+	NAMENO,
+	'EMP',
+	1
+from
+	Conv_NAME cn
+where
+	STAFFINDICATOR = 'Y'
+
+SELECT @Error        = @@ERROR,
+       @RowsAffected = @@ROWCOUNT
+
+EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
+                                   @RowsAffected,
+                                   @Error,
+                                   1
+go
+
+DECLARE @LogID        int,
+        @RowsAffected bigint,
+        @Error        int
+
+EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+                                     N'100 - Names',
+                                     NULL,
+                                     N'NAME',
+                                     N'Inserting into IPNAME - Clients',
+                                     N'IPNAME',
+                                     1,
+                                     @LogID OUTPUT
+
+INSERT INTO IPNAME (NAMENO,CURRENCY,LOCALCLIENTFLAG,TAXCODE)
+select 
+	NAMENO,
+	c.CURRENCY,
+	--CASE when c.CURRENCY is not null then C.CURRENCY else 'GBP' end,
+	CASE WHEN cn.NATIONALITY != 'GB' THEN 0	ELSE 1 END as LOCALCLIENTFLAG,
+	CASE WHEN n.NA_VAT_TYPE = 'D' THEN 'T1'
+		 WHEN n.NA_VAT_TYPE = 'F' THEN 'T0'
+		 WHEN n.NA_VAT_TYPE = 'N' THEN '0'
+		 ELSE NULL END as TAXCODE
+from
+	Conv_NAME cn
+	--join Conv_ADDRESS a on cn.ADDRESSCODE = a.ADDRESSCODE
+	join BB..NA_ADD n on n.NA_REFERENCE COLLATE DATABASE_DEFAULT = cn.NA_REFERENCE
+	left join CURRENCY c on c.CURRENCY = case when n.EX_CURR_CODE = 'STL' then 'GBP' else n.EX_CURR_CODE end COLLATE DATABASE_DEFAULT
+where
+	CLIENTINDICATOR = 'Y'
+
+
+
+SELECT @Error        = @@ERROR,
+       @RowsAffected = @@ROWCOUNT
+
+EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
+                                   @RowsAffected,
+                                   @Error,
+                                   1
+go
+
+DECLARE @LogID        int,
+        @RowsAffected bigint,
+        @Error        int
+
+EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+                                     N'100 - Names',
+                                     NULL,
+                                     N'NAME',
+                                     N'Inserting into FILESIN - Agents',
+                                     N'FILESIN',
+                                     1,
+                                     @LogID OUTPUT
+
+--select * from FILESIN
+
+INSERT INTO FILESIN (NAMENO,COUNTRYCODE)
+select 
+	NAMENO,
+	a.COUNTRYCODE 
+from 
+	Conv_NAME cn
+	left join Conv_ADDRESS a on cn.ADDRESSCODE = a.ADDRESSCODE
+where
+	AGENTFLAG = 1
+
+SELECT @Error        = @@ERROR,
+       @RowsAffected = @@ROWCOUNT
+
+EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
+                                   @RowsAffected,
+                                   @Error,
+                                   1
+go
+
+--select * from SITECONTROL where controlid = 'HOMENAMENO'
+--select * from name where nameno > 0
+--select * from ACCESSACCOUNTNAMES
+
+--select distinct n.EX_CURR_CODE
+--,c.CURRENCY from BB..NA_ADD n
+--join currency c on n.EX_CURR_CODE COLLATE DATABASE_DEFAULT = c.CURRENCY
+
+--select distinct n.EX_CURR_CODE, NA_IC_CODE from BB..NA_ADD n
+
+
+--select * from currency
+
+--select *
+--from
+--	Conv_NAME cn
+--	join Conv_ADDRESS a on cn.ADDRESSCODE = a.ADDRESSCODE
+--where
+--	CLIENTINDICATOR = 'Y'
+
+
+--	select * from name where nameno = -58475
+
+TRUNCATE TABLE Conv_TELECOM
+
+DECLARE @LogID        int,
+        @RowsAffected bigint,
+        @Error        int
+
+EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+                                     N'100 - Names',
+                                     NULL,
+                                     N'Name',
+                                     N'Inserting Partners email into Conv_TELECOM',
+                                     N'Conv_TELECOM',
+                                     1,
+                                     @LogID OUTPUT
+
+INSERT INTO Conv_TELECOM (NAMENO,TELECOMTYPE,TELECOMNUMBER)
+select 
+cn.NAMENO,
+'1903' as TELECOMTYPE,
+CASE
+WHEN CHARINDEX(',',[SNS_EMAIL])>0 THEN SUBSTRING([SNS_EMAIL],0,CHARINDEX(',',[SNS_EMAIL],0))
+WHEN CHARINDEX(';',[SNS_EMAIL])>0 THEN SUBSTRING([SNS_EMAIL],0,CHARINDEX(';',[SNS_EMAIL],0))
+Else [SNS_EMAIL]
+END As [Single E-mail]
+--select *
+from 
+	BB..PARTNERS p
+	join Conv_NAME cn on cn.NAMECODE = p.SNS_PARTNER COLLATE DATABASE_DEFAULT
+where
+	SNS_EMAIL != ''
+	
+	--temp exclude for bad data -- REMOVE AFTER DB REFRESH
+	and 
+	len(CASE
+	WHEN CHARINDEX(',',[SNS_EMAIL])>0 THEN SUBSTRING([SNS_EMAIL],0,CHARINDEX(',',[SNS_EMAIL],0))
+	WHEN CHARINDEX(';',[SNS_EMAIL])>0 THEN SUBSTRING([SNS_EMAIL],0,CHARINDEX(';',[SNS_EMAIL],0))
+	Else [SNS_EMAIL]
+	END) !> 100
+
+SELECT @Error        = @@ERROR,
+       @RowsAffected = @@ROWCOUNT
+
+EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
+                                   @RowsAffected,
+                                   @Error,
+                                   1
+go
+
+DECLARE @LogID        int,
+        @RowsAffected bigint,
+        @Error        int
+
+EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+                                     N'100 - Names',
+                                     NULL,
+                                     N'Name',
+                                     N'Inserting into TELECOMMUNICATION',
+                                     N'TELECOMMUNICATION',
+                                     1,
+                                     @LogID OUTPUT
+
+INSERT INTO TELECOMMUNICATION (TELECODE,TELECOMTYPE,TELECOMNUMBER)
+select
+	TELECODE,
+	TELECOMTYPE,
+	TELECOMNUMBER
+from
+	Conv_TELECOM
+
+SELECT @Error        = @@ERROR,
+       @RowsAffected = @@ROWCOUNT
+
+EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
+                                   @RowsAffected,
+                                   @Error,
+                                   1
+go
+--select * from TELECOMMUNICATION
+
+DECLARE @LogID        int,
+        @RowsAffected bigint,
+        @Error        int
+
+EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+                                     N'100 - Names',
+                                     NULL,
+                                     N'Name',
+                                     N'Update MainEmail on NAME',
+                                     N'NAME',
+                                     1,
+                                     @LogID OUTPUT
+
+update n
+set MAINEMAIL = ct.TELECODE
+--select TELECODE,n.NAMENO
+from
+	Conv_TELECOM ct
+	join NAME n on ct.NAMENO = n.NAMENO
+
+
+SELECT @Error        = @@ERROR,
+       @RowsAffected = @@ROWCOUNT
+
+EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
+                                   @RowsAffected,
+                                   @Error,
+                                   1
+go
+
+DECLARE @LogID        int,
+        @RowsAffected bigint,
+        @Error        int
+
+EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
+                                     N'100 - Names',
+                                     NULL,
+                                     N'Name',
+                                     N'Insert into NAMETELECOM',
+                                     N'NAMETELECOM',
+                                     1,
+                                     @LogID OUTPUT
+
+
+INSERT INTO NAMETELECOM (NAMENO,TELECODE,OWNEDBY)
+select 
+	NAMENO,
+	TELECODE,
+	1
+from
+	Conv_TELECOM
 
 SELECT @Error        = @@ERROR,
        @RowsAffected = @@ROWCOUNT
@@ -170,75 +636,31 @@ EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
 go
 
 
-
 DECLARE @LogID        int,
         @RowsAffected bigint,
         @Error        int
 
 EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'201 - CaseNames',
+                                     N'100 - Names',
                                      NULL,
-                                     N'Case Names - Renewals Team (ZS) Names',
-                                     N'Insert CASENAME',
-                                     N'CASENAME',
+                                     N'Name - insert staff (partners) as employees of homename',
+                                     N'Insert into ASSOCIATEDNAME',
+                                     N'ASSOCIATEDNAME',
                                      1,
                                      @LogID OUTPUT
 
-insert into CASENAME(CASEID, NAMETYPE, SEQUENCE, NAMENO, INHERITED, CORRESPONDNAME, DERIVEDCORRNAME, REFERENCENO, ADDRESSCODE)
+insert into ASSOCIATEDNAME (NAMENO,RELATIONSHIP,SEQUENCE,RELATEDNAME )
 select 
-	cmc.CASEID,
-	'ZS',
+	(select COLINTEGER from sitecontrol where controlid ='HOMENAMENO') as NAMENO,
+	'EMP',
 	0 as SEQUENCE,
-	CASE when cmc.PROPERTYTYPE = 'T' then 537
-		 when cmc.PROPERTYTYPE in ('P','D', 'U') then 538 --added 'U' here cut5 25/07/2023 wda
-	end as NAMENO,
-	0 as INHERITED,
-	null as CORRESPONDNAME,
-	0 as DERIVEDCORRNAME,
-	null as REFERENCENO,
-	501
-from 
-	Conv_MappingCases cmc
-
-
-
-SELECT @Error        = @@ERROR,
-       @RowsAffected = @@ROWCOUNT
-
-EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
-                                   @RowsAffected,
-                                   @Error,
-                                   1
-go
-
---select * from Conv_MappingCases where PROPERTYTYPE not in ('P','D','T')
---select * from NAMETYPE
---select * from NAME where name like '%renewal%'
-
-
-DECLARE @LogID        int,
-        @RowsAffected bigint,
-        @Error        int
-
-EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'201 - CaseNames',
-                                     NULL,
-                                     N'Case Names - CORRES REF: Instructor reference',
-                                     N'UPDATE CASENAME',
-                                     N'CASENAME',
-                                     1,
-                                     @LogID OUTPUT
-
-  UPDATE cn
-  set REFERENCENO = e.CASE_EXT_DATA
-  from 
-	BB..CASE_EXT e
-	join Conv_MappingCases cmc on e.CASE_REF COLLATE DATABASE_DEFAULT = cmc.BB_CASE_REF
-	join CASENAME cn on cn.CASEID = cmc.CASEID and cn.NAMETYPE = 'I'
-  where 
-	e.CASE_EXT_KEY = 'CORRES REF'
-	and e.CASE_EXT_DATA != ''
- -- CASE_EXT_KEY = 'PO NUMBER'                                                
+	cn.NAMENO
+from
+	Conv_NAME cn
+	left join ASSOCIATEDNAME an on an.NAMENO = 501 and an.RELATIONSHIP = 'EMP' and an.RELATEDNAME = cn.NAMENO
+where
+	STAFFINDICATOR = 'Y'
+	and an.NAMENO is null --exclude where already exists
 
 SELECT @Error        = @@ERROR,
        @RowsAffected = @@ROWCOUNT
