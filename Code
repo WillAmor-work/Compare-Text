@@ -1,672 +1,793 @@
-/*******************************************************************************
 
-                            CPA Software Solutions
-                      
-
-							Barker Brettell LLP
-
-
-Description:
-Inserting names from Progressor to Inprotech database
+ /******************************************************************************
 
 Modification History:
-15/06/2022		Created						D Hodges
+
+ 2018-06-06 CY   1: Clear tables JOURNAL, CASEIMAGE, NAMEIMAGE, IMAGEDETAIL and IMAGE
+ 2016-02-24 CY      Created
+
+******************************************************************************/
+
+--select * from cases 
+-- LOOKS LIKE THIS WAS CREATED AT RELEASE 7.1
+-- NEED TO SEE WHAT ADDITIONAL TABLES HAVE BEEN ADDED SINCE THEN THRU TO 10.1.2
 
 
-*******************************************************************************/
+-- Also changed 'DELETE FROM' to 'TRUNCATE TABLE' which improved performance out of sight. Was taking hours previously
 
-use EMEABB
+
+-- Case Related
+-- ------------
+
+print '*** ACTIVITY ***'
+delete from ACTIVITY
+where (CASEID is not null and CASEID < 500)
 go
-
-set concat_null_yields_null off
+print '*** ACTIVITYATTACHMENT ***'
+delete AA
+from ACTIVITYATTACHMENT AA
+where AA.ACTIVITYNO not in (select A.ACTIVITYNO from ACTIVITY A)
 go
-
-
-
---select * from NAME
---select * from Conv_ADDRESS order by 1 desc
-truncate table Conv_ADDRESS
-Go
-
---Addresses
-insert into Conv_ADDRESS (BB_ADDRESSCODE,STREET1,STREET2,CITY,STATE,POSTCODE,COUNTRYCODE)
-select 
-	GD_CST_CODE,
-	--GD_CST_ADD1 as STREET1,
-	--GD_CST_ADD2 as STREET2,
-	CASE WHEN GD_CST_ADD1 != '' THEN GD_CST_ADD1+CHAR(13)+CHAR(10) ELSE '' END+
-	CASE WHEN GD_CST_ADD2 != '' THEN GD_CST_ADD2+CHAR(13)+CHAR(10) ELSE '' END+
-	CASE WHEN GD_CST_ADD3 != '' THEN GD_CST_ADD3+CHAR(13)+CHAR(10) ELSE '' END+
-	CASE WHEN GD_CST_ADD4 != '' THEN GD_CST_ADD4 ELSE '' END+
-	CASE WHEN len(GD_CST_ADD7) >10 THEN CHAR(13)+CHAR(10)+GD_CST_ADD7 ELSE '' END as STREET1,
-
-	CASE WHEN len(GD_CST_ADD6) >20 THEN GD_CST_ADD6+CHAR(13)+CHAR(10) ELSE '' END +
-	CASE WHEN len(GD_CST_ADD5) >30 THEN GD_CST_ADD5 ELSE '' END as STREET2,
-
-	CASE WHEN len(GD_CST_ADD5) >30 THEN NULL ELSE GD_CST_ADD5 END as CITY,
-	CASE WHEN len(GD_CST_ADD6) >20 THEN NULL ELSE GD_CST_ADD6 END as STATE,
-	CASE WHEN len(GD_CST_ADD7) >10 THEN NULL ELSE GD_CST_ADD7 END as POSTCODE,
-	--GD_CST_ADD8,
-	isnull(cm.COUNTRYCODE,'ZZZ') as COUNTRYCODE
-	--select distinct GD_CST_ADD8 
-from
-	BB..GD_CST a
-	left join Conv_COUNTRYMAP cm on cm.BB_COUNTRYDESC = 
-												CASE	WHEN a.GD_CST_ADD8 = 'USA' THEN 'United States' 
-														WHEN a.GD_CST_ADD8 = 'The Netherlands' THEN 'Netherlands' 
-														else a.GD_CST_ADD8 COLLATE DATABASE_DEFAULT end
---where cm.COUNTRYCODE is null and a.GD_CST_ADD8 != ''
---where GD_CST.GD_CST_CODE
-
-truncate table Conv_NAME
+print '*** ACTIVITYHISTORY ***'
+delete from ACTIVITYHISTORY where CASEID < 500
 go
-
---NAMES
-insert into Conv_NAME (NA_REFERENCE,NAMECODE,ENTITYTYPE,CLIENTINDICATOR,STAFFINDICATOR,NAME,FIRSTNAME,REMARKS,FORMALSALUTATION,NATIONALITY,ADDRESSCODE)
-select 
-	n.NA_REFERENCE,
-	n.NA_REFERENCE as NAMECODE,
-	CASE WHEN NA_FAO = '' and a.GD_CST_FNAME not like 'Mr %' 
-						  and a.GD_CST_FNAME not like 'Mr.%'
-						  and a.GD_CST_FNAME not like 'Miss %'
-						  and a.GD_CST_FNAME not like 'Miss.%'
-						  and a.GD_CST_FNAME not like 'Mrs %'
-						  and a.GD_CST_FNAME not like 'Mrs.%'
-						  and a.GD_CST_FNAME not like 'Dr %'
-						  and a.GD_CST_FNAME not like 'Dr.%'
-						  and a.GD_CST_FNAME not like 'Sir %'
-						  and a.GD_CST_FNAME not like 'Sirs %'
-						  and a.GD_CST_FNAME not like 'Ms %'
-						  and a.GD_CST_FNAME not like 'Ms.%'
-						  and a.GD_CST_FNAME not like 'Prof %'
-						  and a.GD_CST_FNAME not like 'Prof.%'
-						  and a.GD_CST_FNAME not like 'Professor %'
-						  and a.GD_CST_FNAME not like 'Professor.%'
-		THEN 'O' ELSE 'I' END as ENTITYTYPE, --I or O
-	null,
-	null,
-	CASE WHEN NA_FAO = '' THEN TRIM(a.GD_CST_FNAME) ELSE TRIM(NA_FAO) END as NAME,
-	--CASE WHEN NA_FAO = '' THEN a.GD_CST_RNAME ELSE NULL END as FIRSTNAME,
-	null as FIRSTNAME,
-	NA_INAME as REMARKS,
-	NA_SALUTE as FORMALSALUTATION,
-	cm.COUNTRYCODE as NATIONALITY,
-	ca.ADDRESSCODE as ADDRESSCODE
-	--select *
-from
-	BB..NA_ADD n
-	left join BB..GD_CST a on n.NA_CST_CODE = a.GD_CST_CODE
-	left join Conv_COUNTRYMAP cm on cm.BB_COUNTRY_CODE = n.NA_IC_CODE COLLATE DATABASE_DEFAULT
-	left join Conv_ADDRESS ca on ca.BB_ADDRESSCODE = n.NA_CST_CODE
-
-
---select *
---from
---	BB..NA_ADD n
---	left join BB..GD_CST a on n.NA_CST_CODE = a.GD_CST_CODE
---	--left join Conv_COUNTRYMAP cm on cm.BB_COUNTRY_CODE = n.NA_IC_CODE COLLATE DATABASE_DEFAULT
-
---select * from Conv_NAME where ltrim(rtrim(name)) not like '%' + ltrim(rtrim(FIRSTNAME)) + '%'
-
-Update n
-set CLIENTINDICATOR = 'Y'
---select *
-from  Conv_NAME n
-join BB..NAME_EXT e on n.NA_REFERENCE = e.NA_REFERENCE COLLATE DATABASE_DEFAULT and NA_EXT_KEY = 'A_ACLIENT' and NA_EXT_DATA = 'Y'
-
-Update n
-set AGENTFLAG = 1
---select *
-from  Conv_NAME n
-join BB..NAME_EXT e on n.NA_REFERENCE = e.NA_REFERENCE COLLATE DATABASE_DEFAULT and NA_EXT_KEY = 'A_AGENT' and NA_EXT_DATA = 'Y'
-
-
-
-
-
-
---PARTNERS(staff)
-insert into Conv_NAME (NAMECODE,ENTITYTYPE,CLIENTINDICATOR,STAFFINDICATOR,NAME,FIRSTNAME,NATIONALITY,EMAIL,USEDASFLAG)
- select 
-	SNS_PARTNER as NAMECODE,
-	'I' as ENTITYTYPE,
-	'N' as CLIENTINDICATOR,
-	'Y' as STAFFINDICATOR,
-	TRIM(SNS_LASTNAME) as NAME,
-	TRIM(SNS_FIRSTNAME) as FIRSTNAME,
-	cm.COUNTRYCODE as NATIONALITY,
-	SNS_EMAIL as EMAIL,
-	3 as USEDASFLAG --Individual and staff
-	--select *
- from 
-	BB..PARTNERS p
-	left join Conv_COUNTRYMAP cm on cm.BB_COUNTRY_CODE = p.SNS_NATIONALITY COLLATE DATABASE_DEFAULT
-
-UPDATE n
-set USEDASFLAG =
---select *,
-	CASE WHEN ENTITYTYPE = 'I' and CLIENTINDICATOR = 'Y' THEN 5
-		 WHEN ENTITYTYPE = 'I' and isnull(STAFFINDICATOR,'N') !='Y' THEN 1
-		 WHEN ENTITYTYPE = 'I' and isnull(STAFFINDICATOR,'N') = 'Y' THEN 3
-		 WHEN ENTITYTYPE = 'O' and CLIENTINDICATOR = 'Y' THEN 4
-		 WHEN ENTITYTYPE = 'O' THEN 0 
-		 ELSE NULL END --as USEDASFLAG
-from
-	Conv_NAME n
-
-INSERT INTO ADDRESS (ADDRESSCODE,STREET1,STREET2,CITY,STATE,POSTCODE,COUNTRYCODE)
-select 
-	ADDRESSCODE,STREET1,STREET2,CITY,STATE,POSTCODE,COUNTRYCODE
-from 
-	Conv_ADDRESS a
-
-Insert into NAME (NAMENO,NAMECODE,NAME,FIRSTNAME,NATIONALITY,POSTALADDRESS,STREETADDRESS,USEDASFLAG,REMARKS,SEARCHKEY1)
-select
-	NAMENO,
-	NAMECODE,
-	NAME,
-	FIRSTNAME,
-	NATIONALITY,
-	ADDRESSCODE as POSTALADDRESS,
-	ADDRESSCODE as STREETADDRESS,
-	USEDASFLAG,
-	REMARKS,
-	SUBSTRING(NAME, 1, 20) as SEARCHKEY1
-from
-	Conv_NAME
-
-
-insert into ASSOCIATEDNAME (NAMENO,RELATIONSHIP,SEQUENCE,RELATEDNAME )
-select 
-	cn.NAMENO,
-	'EMP',
-	ROW_NUMBER() OVER(PARTITION BY cn.NAMENO,cen.NAMENO ORDER BY cn.NAMENO,cen.NA_REFERENCE DESC)-1 as SEQUENCE,
-	cen.NAMENO
-	--ee.NA_EXT_DATA,*
-from
-	Conv_NAME cn
-	join BB..NA_ADD n on cn.NA_REFERENCE = n.NA_REFERENCE COLLATE DATABASE_DEFAULT
-	join BB..NAME_EXT e on e.NA_REFERENCE = n.NA_REFERENCE and e.NA_EXT_KEY = 'A_ACLIENT' and e.NA_EXT_DATA = 'Y'
-
-	join BB..NA_ADD en on  n.NA_CST_CODE = en.NA_CST_CODE and en.NA_REFERENCE != n.NA_REFERENCE
-	--left join  BB..NAME_EXT ee on ee.NA_REFERENCE = en.NA_REFERENCE and ee.NA_EXT_KEY = 'A_ACLIENT' and ee.NA_EXT_DATA = 'Y'
-	join Conv_NAME cen on cen.NA_REFERENCE = en.NA_REFERENCE COLLATE DATABASE_DEFAULT
---where
---n.NA_REFERENCE = 'T00477'
---	n.NA_REFERENCE = 'U01349'
-
-
---select * from Conv_NAME
-
---select * from NAMEADDRESSSNAP
---select * from address
-
-DECLARE @LogID        int,
-        @RowsAffected bigint,
-        @Error        int
-
-EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'100 - Names',
-                                     NULL,
-                                     N'NAME',
-                                     N'Linking Addresses to Postal Addresses',
-                                     N'NAMEADDRESS',
-                                     1,
-                                     @LogID OUTPUT
-
-insert into NAMEADDRESS (NAMENO, ADDRESSTYPE, ADDRESSCODE, OWNEDBY)
-select 
-	NAMENO,
-	301 as ADDRESSTYPE, 
-	ADDRESSCODE,
-	1
-from
-	Conv_NAME cn
-where ADDRESSCODE is not null
-
-
-SELECT @Error        = @@ERROR,
-       @RowsAffected = @@ROWCOUNT
-
-EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
-                                   @RowsAffected,
-                                   @Error,
-                                   1
+print '*** ACTIVITYREQUEST ***'
+delete from ACTIVITYREQUEST where CASEID < 500
 go
-
-DECLARE @LogID        int,
-        @RowsAffected bigint,
-        @Error        int
-
-EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'100 - Names',
-                                     NULL,
-                                     N'NAME',
-                                     N'Linking Addresses to Street Addresses',
-                                     N'NAMEADDRESS',
-                                     1,
-                                     @LogID OUTPUT
-
-insert into NAMEADDRESS (NAMENO, ADDRESSTYPE, ADDRESSCODE, OWNEDBY)
-select 
-	NAMENO,
-	302 as ADDRESSTYPE, 
-	ADDRESSCODE,
-	1
-from
-	Conv_NAME cn
-where ADDRESSCODE is not null
-
-SELECT @Error        = @@ERROR,
-       @RowsAffected = @@ROWCOUNT
-
-EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
-                                   @RowsAffected,
-                                   @Error,
-                                   1
+print '*** ALERT ***'
+delete from ALERT where CASEID < 500
 go
-
-DECLARE @LogID        int,
-        @RowsAffected bigint,
-        @Error        int
-
-EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'100 - Names',
-                                     NULL,
-                                     N'NAME',
-                                     N'Inserting into Organisation',
-                                     N'ORGANISATION',
-                                     1,
-                                     @LogID OUTPUT
-
-insert into ORGANISATION(NAMENO, VATNO, PARENT, INCORPORATED)
-select 
-	NAMENO,
-	NULL,
-	NULL,
-	NULL
-from 
-	Conv_NAME
-where
-	ENTITYTYPE = 'O'
-
-SELECT @Error        = @@ERROR,
-       @RowsAffected = @@ROWCOUNT
-
-EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
-                                   @RowsAffected,
-                                   @Error,
-                                   1
+print '*** CASECHECKLIST ***'
+delete from CASECHECKLIST where CASEID < 500
 go
-
-DECLARE @LogID        int,
-        @RowsAffected bigint,
-        @Error        int
-
-EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'100 - Names',
-                                     NULL,
-                                     N'NAME',
-                                     N'Inserting into Individual',
-                                     N'INDIVIDUAL',
-                                     1,
-                                     @LogID OUTPUT
-
-insert into INDIVIDUAL(NAMENO)
-select
-	NAMENO
-from
-	Conv_NAME
-where
-	ENTITYTYPE = 'I'
-
-
-SELECT @Error        = @@ERROR,
-       @RowsAffected = @@ROWCOUNT
-
-EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
-                                   @RowsAffected,
-                                   @Error,
-                                   1
+print '*** CASEEVENT ***'
+delete from CASEEVENT where CASEID < 500
 go
-
-DECLARE @LogID        int,
-        @RowsAffected bigint,
-        @Error        int
-
-EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'100 - Names',
-                                     NULL,
-                                     N'NAME',
-                                     N'Inserting into Emloyee',
-                                     N'EMPLOYEE',
-                                     1,
-                                     @LogID OUTPUT
-
-insert into EMPLOYEE(EMPLOYEENO,SIGNOFFNAME,ABBREVIATEDNAME)
-select	
-	NAMENO,
-	CASE WHEN FIRSTNAME is null THEN NAME
-	ELSE FIRSTNAME + ' ' + NAME	END SIGNOFFNAME,
-	NAMECODE as ABBREVIATEDNAME
-from
-	Conv_NAME cn
-where
-	STAFFINDICATOR = 'Y'
-
-SELECT @Error        = @@ERROR,
-       @RowsAffected = @@ROWCOUNT
-
-EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
-                                   @RowsAffected,
-                                   @Error,
-                                   1
+--1:->
+print '*** CASEIMAGE ***'
+delete from CASEIMAGE where CASEID < 500
 go
-
-DECLARE @LogID        int,
-        @RowsAffected bigint,
-        @Error        int
-
-EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'100 - Names',
-                                     NULL,
-                                     N'NAME',
-                                     N'Inserting Staff into NAMETYPECLASSIFICATION',
-                                     N'NAMETYPECLASSIFICATION',
-                                     1,
-                                     @LogID OUTPUT
-
---select * from NAMETYPECLASSIFICATION
-insert into NAMETYPECLASSIFICATION(NAMENO,NAMETYPE,ALLOW)
-select	
-	NAMENO,
-	'EMP',
-	1
-from
-	Conv_NAME cn
-where
-	STAFFINDICATOR = 'Y'
-
-SELECT @Error        = @@ERROR,
-       @RowsAffected = @@ROWCOUNT
-
-EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
-                                   @RowsAffected,
-                                   @Error,
-                                   1
+--1:-<
+print '*** CASEINDEXES ***'
+delete from CASEINDEXES where CASEID < 500
 go
-
-DECLARE @LogID        int,
-        @RowsAffected bigint,
-        @Error        int
-
-EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'100 - Names',
-                                     NULL,
-                                     N'NAME',
-                                     N'Inserting into IPNAME - Clients',
-                                     N'IPNAME',
-                                     1,
-                                     @LogID OUTPUT
-
-INSERT INTO IPNAME (NAMENO,CURRENCY,LOCALCLIENTFLAG,TAXCODE)
-select 
-	NAMENO,
-	c.CURRENCY,
-	--CASE when c.CURRENCY is not null then C.CURRENCY else 'GBP' end,
-	CASE WHEN cn.NATIONALITY != 'GB' THEN 0	ELSE 1 END as LOCALCLIENTFLAG,
-	CASE WHEN n.NA_VAT_TYPE = 'D' THEN 'T1'
-		 WHEN n.NA_VAT_TYPE = 'F' THEN 'T0'
-		 WHEN n.NA_VAT_TYPE = 'N' THEN '0'
-		 ELSE NULL END as TAXCODE
-from
-	Conv_NAME cn
-	--join Conv_ADDRESS a on cn.ADDRESSCODE = a.ADDRESSCODE
-	join BB..NA_ADD n on n.NA_REFERENCE COLLATE DATABASE_DEFAULT = cn.NA_REFERENCE
-	left join CURRENCY c on c.CURRENCY = case when n.EX_CURR_CODE = 'STL' then 'GBP' else n.EX_CURR_CODE end COLLATE DATABASE_DEFAULT
-where
-	CLIENTINDICATOR = 'Y'
-
-
-
-SELECT @Error        = @@ERROR,
-       @RowsAffected = @@ROWCOUNT
-
-EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
-                                   @RowsAffected,
-                                   @Error,
-                                   1
+print '*** CASEINSTRUCTIONS ***'
+delete from CASEINSTRUCTIONS where CASEID < 500
 go
-
-DECLARE @LogID        int,
-        @RowsAffected bigint,
-        @Error        int
-
-EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'100 - Names',
-                                     NULL,
-                                     N'NAME',
-                                     N'Inserting into FILESIN - Agents',
-                                     N'FILESIN',
-                                     1,
-                                     @LogID OUTPUT
-
---select * from FILESIN
-
-INSERT INTO FILESIN (NAMENO,COUNTRYCODE)
-select 
-	NAMENO,
-	a.COUNTRYCODE 
-from 
-	Conv_NAME cn
-	left join Conv_ADDRESS a on cn.ADDRESSCODE = a.ADDRESSCODE
-where
-	AGENTFLAG = 1
-
-SELECT @Error        = @@ERROR,
-       @RowsAffected = @@ROWCOUNT
-
-EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
-                                   @RowsAffected,
-                                   @Error,
-                                   1
+print '*** CASEINSTRUCTIONSRECALC ***'
+delete from CASEINSTRUCTIONSRECALC where CASEID < 500
 go
-
---select * from SITECONTROL where controlid = 'HOMENAMENO'
---select * from name where nameno > 0
---select * from ACCESSACCOUNTNAMES
-
---select distinct n.EX_CURR_CODE
---,c.CURRENCY from BB..NA_ADD n
---join currency c on n.EX_CURR_CODE COLLATE DATABASE_DEFAULT = c.CURRENCY
-
---select distinct n.EX_CURR_CODE, NA_IC_CODE from BB..NA_ADD n
-
-
---select * from currency
-
---select *
---from
---	Conv_NAME cn
---	join Conv_ADDRESS a on cn.ADDRESSCODE = a.ADDRESSCODE
---where
---	CLIENTINDICATOR = 'Y'
-
-
---	select * from name where nameno = -58475
-
-TRUNCATE TABLE Conv_TELECOM
-
-DECLARE @LogID        int,
-        @RowsAffected bigint,
-        @Error        int
-
-EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'100 - Names',
-                                     NULL,
-                                     N'Name',
-                                     N'Inserting Partners email into Conv_TELECOM',
-                                     N'Conv_TELECOM',
-                                     1,
-                                     @LogID OUTPUT
-
-INSERT INTO Conv_TELECOM (NAMENO,TELECOMTYPE,TELECOMNUMBER)
-select 
-cn.NAMENO,
-'1903' as TELECOMTYPE,
-CASE
-WHEN CHARINDEX(',',[SNS_EMAIL])>0 THEN SUBSTRING([SNS_EMAIL],0,CHARINDEX(',',[SNS_EMAIL],0))
-WHEN CHARINDEX(';',[SNS_EMAIL])>0 THEN SUBSTRING([SNS_EMAIL],0,CHARINDEX(';',[SNS_EMAIL],0))
-Else [SNS_EMAIL]
-END As [Single E-mail]
---select *
-from 
-	BB..PARTNERS p
-	join Conv_NAME cn on cn.NAMECODE = p.SNS_PARTNER COLLATE DATABASE_DEFAULT
-where
-	SNS_EMAIL != ''
-	
-	--temp exclude for bad data -- REMOVE AFTER DB REFRESH
-	and 
-	len(CASE
-	WHEN CHARINDEX(',',[SNS_EMAIL])>0 THEN SUBSTRING([SNS_EMAIL],0,CHARINDEX(',',[SNS_EMAIL],0))
-	WHEN CHARINDEX(';',[SNS_EMAIL])>0 THEN SUBSTRING([SNS_EMAIL],0,CHARINDEX(';',[SNS_EMAIL],0))
-	Else [SNS_EMAIL]
-	END) !> 100
-
-SELECT @Error        = @@ERROR,
-       @RowsAffected = @@ROWCOUNT
-
-EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
-                                   @RowsAffected,
-                                   @Error,
-                                   1
+print '*** CASELOCATION ***'
+delete from CASELOCATION where CASEID < 500
 go
-
-DECLARE @LogID        int,
-        @RowsAffected bigint,
-        @Error        int
-
-EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'100 - Names',
-                                     NULL,
-                                     N'Name',
-                                     N'Inserting into TELECOMMUNICATION',
-                                     N'TELECOMMUNICATION',
-                                     1,
-                                     @LogID OUTPUT
-
-INSERT INTO TELECOMMUNICATION (TELECODE,TELECOMTYPE,TELECOMNUMBER)
-select
-	TELECODE,
-	TELECOMTYPE,
-	TELECOMNUMBER
-from
-	Conv_TELECOM
-
-SELECT @Error        = @@ERROR,
-       @RowsAffected = @@ROWCOUNT
-
-EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
-                                   @RowsAffected,
-                                   @Error,
-                                   1
+print '*** CASENAME ***'
+delete from CASENAME where CASEID < 500
 go
---select * from TELECOMMUNICATION
-
-DECLARE @LogID        int,
-        @RowsAffected bigint,
-        @Error        int
-
-EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'100 - Names',
-                                     NULL,
-                                     N'Name',
-                                     N'Update MainEmail on NAME',
-                                     N'NAME',
-                                     1,
-                                     @LogID OUTPUT
-
-update n
-set MAINEMAIL = ct.TELECODE
---select TELECODE,n.NAMENO
-from
-	Conv_TELECOM ct
-	join NAME n on ct.NAMENO = n.NAMENO
-
-
-SELECT @Error        = @@ERROR,
-       @RowsAffected = @@ROWCOUNT
-
-EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
-                                   @RowsAffected,
-                                   @Error,
-                                   1
+print '*** CASES ***'
+delete from CASES where CASEID < 500
 go
-
-DECLARE @LogID        int,
-        @RowsAffected bigint,
-        @Error        int
-
-EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'100 - Names',
-                                     NULL,
-                                     N'Name',
-                                     N'Insert into NAMETELECOM',
-                                     N'NAMETELECOM',
-                                     1,
-                                     @LogID OUTPUT
-
-
-INSERT INTO NAMETELECOM (NAMENO,TELECODE,OWNEDBY)
-select 
-	NAMENO,
-	TELECODE,
-	1
-from
-	Conv_TELECOM
-
-SELECT @Error        = @@ERROR,
-       @RowsAffected = @@ROWCOUNT
-
-EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
-                                   @RowsAffected,
-                                   @Error,
-                                   1
+print '*** CASETEXT ***'
+delete from CASETEXT where CASEID < 500
+go
+print '*** CASEWORDS ***'
+delete from CASEWORDS where CASEID < 500
+go
+print '*** CLASSFIRSTUSE ***'
+delete from CLASSFIRSTUSE where CASEID < 500
+go
+print '*** DIARY ***'
+delete from DIARY where CASEID < 500
+go
+print '*** EMPLOYEEREMINDER ***'
+delete from EMPLOYEEREMINDER where CASEID < 500
+go
+print '*** FILEPART ***'
+delete from FILEPART where CASEID < 500
+go
+--1:->
+print '*** JOURNAL ***'
+delete from JOURNAL where CASEID is not null
+go
+--1:-<
+print '*** NAMEINSTRUCTIONS ***'
+delete from NAMEINSTRUCTIONS where CASEID < 500
+go
+print '*** OFFICIALNUMBERS ***'
+delete from OFFICIALNUMBERS where CASEID < 500
+go
+print '*** OPENACTION ***'
+delete from OPENACTION where CASEID < 500
+go
+print '*** OPENITEM ***'
+delete from OPENITEM where MAINCASEID < 500
+go
+print '*** POLICING ***'
+delete from POLICING where SYSGENERATEDFLAG = 1
+go
+print '*** POLICINGERRORS ***'
+delete from POLICINGERRORS where CASEID < 500
+go
+print '*** PROPERTY ***'
+delete from PROPERTY where CASEID < 500
+go
+print '*** RELATEDCASE ***'
+delete from RELATEDCASE where CASEID < 500
+go
+print '*** RELATEDCASE ***'
+delete from RELATEDCASE where relatedCASEID < 500
 go
 
 
-DECLARE @LogID        int,
-        @RowsAffected bigint,
-        @Error        int
-
-EXECUTE [dbo].[cpass_conv_Log_Start] NULL,
-                                     N'100 - Names',
-                                     NULL,
-                                     N'Name - insert staff (partners) as employees of homename',
-                                     N'Insert into ASSOCIATEDNAME',
-                                     N'ASSOCIATEDNAME',
-                                     1,
-                                     @LogID OUTPUT
-
-insert into ASSOCIATEDNAME (NAMENO,RELATIONSHIP,SEQUENCE,RELATEDNAME )
-select 
-	(select COLINTEGER from sitecontrol where controlid ='HOMENAMENO') as NAMENO,
-	'EMP',
-	0 as SEQUENCE,
-	cn.NAMENO
-from
-	Conv_NAME cn
-	left join ASSOCIATEDNAME an on an.NAMENO = 501 and an.RELATIONSHIP = 'EMP' and an.RELATEDNAME = cn.NAMENO
-where
-	STAFFINDICATOR = 'Y'
-	and an.NAMENO is null --exclude where already exists
-
-SELECT @Error        = @@ERROR,
-       @RowsAffected = @@ROWCOUNT
-
-EXECUTE [dbo].[cpass_conv_Log_End] @LogID,
-                                   @RowsAffected,
-                                   @Error,
-                                   1
+print '*** OPENACTION ***'
+delete from OPENACTION where ACTION = 'CD'
 go
+
+print '*** ADDRESS ***'
+delete a
+from ADDRESS a
+where ADDRESSCODE < 500
+--join NAMEADDRESS na on a.ADDRESSCODE = na.ADDRESSCODE and na.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** TELECOMMUNICATION ***'
+delete t
+from TELECOMMUNICATION t
+where TELECODE < 500
+--join NAMETELECOM nt on t.TELECODE = nt.TELECODE and nt.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+
+
+print '*** ACTIVITY ***'
+delete A
+from ACTIVITY A
+where A.NAMENO is not null
+and A.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** ACTIVITYATTACHMENT ***'
+delete AA
+from ACTIVITYATTACHMENT AA
+where AA.ACTIVITYNO not in (select A.ACTIVITYNO from ACTIVITY A)
+go
+print '*** ACTIVITYREQUEST ***'
+delete from ACTIVITYREQUEST where ACTIVITYREQUEST.DEBTOR in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** ASSOCIATEDNAME ***'
+delete from ASSOCIATEDNAME where ASSOCIATEDNAME.RELATEDNAME in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** ASSOCIATEDNAME ***'
+delete from ASSOCIATEDNAME where ASSOCIATEDNAME.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** BANKACCOUNT ***'
+delete from BANKACCOUNT where BANKACCOUNT.ACCOUNTOWNER in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** BANKACCOUNT ***'
+delete from BANKACCOUNT where BANKACCOUNT.BANKNAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** CASENAME ***'
+delete from CASENAME where CASENAME.INHERITEDNAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** CASENAME ***'
+delete from CASENAME where CASENAME.CORRESPONDNAME in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** CASENAME ***'
+delete from CASENAME where CASENAME.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+--print '*** CASHITEM ***'
+--delete from CASHITEM where CASHITEM.ACCTNAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+--go
+print '*** CREDITOR ***'
+delete from CREDITOR where CREDITOR.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** DIARY ***'
+delete from DIARY where DIARY.EMPLOYEENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** DISCOUNT ***'
+delete from DISCOUNT where DISCOUNT.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+--print '*** EMPLOYEE ***'
+--delete from EMPLOYEE where EMPLOYEE.EMPLOYEENO in (select n.NAMENO from NAME n where n.NAMENO < 500)
+--go
+print '*** EMPLOYEEREMINDER ***'
+delete from EMPLOYEEREMINDER where EMPLOYEEREMINDER.EMPLOYEENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** FEESCALCULATION ***'
+delete from FEESCALCULATION where FEESCALCULATION.DEBTOR in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** FEESCALCULATION ***'
+delete from FEESCALCULATION where FEESCALCULATION.SERVEMPLOYEENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** FEESCALCULATION ***'
+delete from FEESCALCULATION where FEESCALCULATION.DISBEMPLOYEENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** FILESIN ***'
+delete from FILESIN where FILESIN.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** INDIVIDUAL ***'
+delete from INDIVIDUAL where INDIVIDUAL.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** IPNAME ***'
+delete from IPNAME where IPNAME.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** NAMEADDRESS ***'
+delete from NAMEADDRESS where NAMEADDRESS.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+--print '*** NAMEADDRESSSNAP ***'
+--delete from NAMEADDRESSSNAP where NAMEADDRESSSNAP.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+--go
+--print '*** NAMEADDRESSSNAP ***'
+--delete from NAMEADDRESSSNAP where NAMEADDRESSSNAP.ATTNNAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+--go
+print '*** NAMEALIAS ***'
+delete from NAMEALIAS where NAMEALIAS.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** NAMEEXEMPTCHARGES ***'
+delete from NAMEEXEMPTCHARGES where NAMEEXEMPTCHARGES.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+--1:->
+print '*** NAMEIMAGE ***'
+delete from NAMEIMAGE where NAMEIMAGE.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+--1:-<
+print '*** NAMEINSTRUCTIONS ***'
+delete from NAMEINSTRUCTIONS where NAMEINSTRUCTIONS.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** NAMETELECOM ***'
+delete from NAMETELECOM where NAMETELECOM.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** NAMETEXT ***'
+delete from NAMETEXT where NAMETEXT.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** NAMETYPECLASSIFICATION ***'
+delete from NAMETYPECLASSIFICATION where NAMETYPECLASSIFICATION.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** ORGANISATION ***'
+delete from ORGANISATION where ORGANISATION.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+print '*** SPECIALNAME ***'
+delete from SPECIALNAME where SPECIALNAME.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3)
+go
+--print '*** TIMECOSTING ***'
+--delete from TIMECOSTING
+--where (TIMECOSTING.EMPLOYEENO is not null and TIMECOSTING.EMPLOYEENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3))
+--go
+
+
+
+-- Staff
+
+print '*** ADDRESS ***'
+delete a
+from ADDRESS a
+join NAMEADDRESS na on a.ADDRESSCODE = na.ADDRESSCODE and na.NAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** TELECOMMUNICATION ***'
+delete t
+from TELECOMMUNICATION t
+join NAMETELECOM nt on t.TELECODE = nt.TELECODE and nt.NAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+
+
+print '*** ACTIVITY ***'
+delete A
+from ACTIVITY A
+where A.NAMENO is not null
+and A.NAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** ACTIVITYATTACHMENT ***'
+delete AA
+from ACTIVITYATTACHMENT AA
+where AA.ACTIVITYNO not in (select A.ACTIVITYNO from ACTIVITY A)
+go
+print '*** ACTIVITYREQUEST ***'
+delete from ACTIVITYREQUEST where ACTIVITYREQUEST.DEBTOR in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** ASSOCIATEDNAME ***'
+delete from ASSOCIATEDNAME where ASSOCIATEDNAME.RELATEDNAME in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** ASSOCIATEDNAME ***'
+delete from ASSOCIATEDNAME where ASSOCIATEDNAME.NAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** BANKACCOUNT ***'
+delete from BANKACCOUNT where BANKACCOUNT.ACCOUNTOWNER in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** BANKACCOUNT ***'
+delete from BANKACCOUNT where BANKACCOUNT.BANKNAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** CASENAME ***'
+delete from CASENAME where CASENAME.INHERITEDNAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** CASENAME ***'
+delete from CASENAME where CASENAME.CORRESPONDNAME in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** CASENAME ***'
+delete from CASENAME where CASENAME.NAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+--print '*** CASHITEM ***'
+--delete from CASHITEM where CASHITEM.ACCTNAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+--go
+print '*** CREDITOR ***'
+delete from CREDITOR where CREDITOR.NAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** DIARY ***'
+delete from DIARY where DIARY.EMPLOYEENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** DISCOUNT ***'
+delete from DISCOUNT where DISCOUNT.NAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** EMPLOYEE ***'
+delete from EMPLOYEE where EMPLOYEE.EMPLOYEENO in (select n.NAMENO from NAME n where n.NAMENO < 500)
+go
+print '*** EMPLOYEEREMINDER ***'
+delete from EMPLOYEEREMINDER where EMPLOYEEREMINDER.EMPLOYEENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** FEESCALCULATION ***'
+delete from FEESCALCULATION where FEESCALCULATION.DEBTOR in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** FEESCALCULATION ***'
+delete from FEESCALCULATION where FEESCALCULATION.SERVEMPLOYEENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** FEESCALCULATION ***'
+delete from FEESCALCULATION where FEESCALCULATION.DISBEMPLOYEENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** FILESIN ***'
+delete from FILESIN where FILESIN.NAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** INDIVIDUAL ***'
+delete from INDIVIDUAL where INDIVIDUAL.NAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** IPNAME ***'
+delete from IPNAME where IPNAME.NAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** NAMEADDRESS ***'
+delete from NAMEADDRESS where NAMEADDRESS.NAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** NAMEALIAS ***'
+delete from NAMEALIAS where NAMEALIAS.NAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** NAMEEXEMPTCHARGES ***'
+delete from NAMEEXEMPTCHARGES where NAMEEXEMPTCHARGES.NAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+--1:->
+print '*** NAMEIMAGE ***'
+delete from NAMEIMAGE where NAMEIMAGE.NAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+--1:-<
+print '*** NAMEINSTRUCTIONS ***'
+delete from NAMEINSTRUCTIONS where NAMEINSTRUCTIONS.NAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** NAMETELECOM ***'
+delete from NAMETELECOM where NAMETELECOM.NAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** NAMETEXT ***'
+delete from NAMETEXT where NAMETEXT.NAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** NAMETYPECLASSIFICATION ***'
+delete from NAMETYPECLASSIFICATION where NAMETYPECLASSIFICATION.NAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** ORGANISATION ***'
+delete from ORGANISATION where ORGANISATION.NAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** SPECIALNAME ***'
+delete from SPECIALNAME where SPECIALNAME.NAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+print '*** TIMECOSTING ***'
+delete from TIMECOSTING
+where (TIMECOSTING.EMPLOYEENO is not null and TIMECOSTING.EMPLOYEENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3))
+go
+
+-- Accounting
+-- ----------
+
+--
+-- WIP
+--
+print '*** EXPENSEIMPORT ***'
+truncate table EXPENSEIMPORT
+go
+print '*** BILLEDITEM ***'
+truncate table BILLEDITEM
+go
+print '*** DIARY ***'
+truncate table DIARY
+go
+print '*** WORKHISTORY ***'
+truncate table WORKHISTORY
+go
+print '*** WORKINPROGRESS ***'
+truncate table WORKINPROGRESS
+go
+print '*** TRANSADJUSTMENT ***'
+truncate table TRANSADJUSTMENT
+go
+--
+-- BILLING AND AR
+--
+print '*** BILLLINE ***'
+truncate table BILLLINE
+go
+print '*** TAXHISTORY ***'
+truncate table TAXHISTORY
+go
+print '*** DEBTORHISTORYCASE ***'
+truncate table DEBTORHISTORYCASE
+go
+print '*** DEBTORHISTORY ***'
+truncate table DEBTORHISTORY
+go
+print '*** OPENITEMTAX ***'
+truncate table OPENITEMTAX
+go
+print '*** OPENITEMCASE ***'
+truncate table OPENITEMCASE
+go
+print '*** OPENITEM ***'
+truncate table OPENITEM
+go
+print '*** NAMEADDRESSSNAP ***'
+truncate table NAMEADDRESSSNAP
+go
+--
+-- AP
+--
+print '*** PAYMENTPLANDETAIL ***'
+truncate table PAYMENTPLANDETAIL
+go
+print '*** PAYMENTPLAN ***'
+truncate table PAYMENTPLAN
+go
+print '*** TAXPAIDHISTORY ***'
+truncate table TAXPAIDHISTORY
+go
+print '*** TAXPAIDITEM ***'
+truncate table TAXPAIDITEM
+go
+print '*** CREDITORHISTORY ***'
+truncate table CREDITORHISTORY
+go
+print '*** CREDITORITEM ***'
+truncate table CREDITORITEM
+go
+--
+-- FEES LIST
+--
+print '*** FEELISTCASE ***'
+truncate table FEELISTCASE
+go
+print '*** FEELIST ***'
+truncate table FEELIST
+go
+--
+-- CASHBOOK
+--
+print '*** CHEQUEREGISTER ***'
+truncate table CHEQUEREGISTER
+go
+print '*** CASHHISTORY ***'
+truncate table CASHHISTORY
+go
+print '*** CASHITEM ***'
+truncate table CASHITEM
+go
+print '*** BANKHISTORY ***'
+truncate table BANKHISTORY
+go
+--
+-- TRUST
+--
+print '*** TRUSTHISTORY ***'
+truncate table TRUSTHISTORY
+go
+print '*** TRUSTITEM ***'
+truncate table TRUSTITEM
+go
+--
+-- FI AND GL
+--
+print '*** GLJOURNALLINE ***'
+truncate table GLJOURNALLINE
+go
+print '*** GLJOURNALLINEEXT ***'
+truncate table GLJOURNALLINEEXT
+go
+print '*** GLJOURNAL ***'
+truncate table GLJOURNAL
+go
+print '*** LEDGERJOURNALLINEBALANCE ***'
+truncate table LEDGERJOURNALLINEBALANCE
+go
+print '*** LEDGERJOURNALLINE ***'
+truncate table LEDGERJOURNALLINE
+go
+print '*** LEDGERJOURNAL ***'
+truncate table LEDGERJOURNAL
+go
+print '*** BUDGET ***'
+truncate table BUDGET
+go
+
+--
+-- TOTALS
+--
+print '*** TRANSACTIONHEADER ***'
+truncate table TRANSACTIONHEADER
+go
+print '*** CONTROLTOTAL ***'
+truncate table CONTROLTOTAL
+go
+print '*** TRUSTACCOUNT ***'
+truncate table TRUSTACCOUNT
+go
+print '*** ACCOUNT ***'
+--update ACCOUNT
+--set BALANCE = 0.00, CRBALANCE = 0.00
+--go
+truncate table ACCOUNT
+go
+
+
+print '*** BANKACCOUNT ***'
+update BANKACCOUNT
+set ACCOUNTBALANCE = 0.00,
+    LOCALBALANCE = 0.00
+go
+
+
+
+-- General
+-- -------
+
+print '*** CPAUPDATE ***'
+truncate table CPAUPDATE
+go
+
+print '*** EDETRANSACTIONHEADER ***'
+truncate table EDETRANSACTIONHEADER
+go
+
+print '*** IDENTITYINDEX ***'
+truncate table IDENTITYINDEX	-- used by Web to store list of recent cases queried
+go
+
+--1:->
+print '*** IMAGE ***'
+truncate table IMAGE
+go
+
+print '*** IMAGEDETAIL ***'
+truncate table IMAGEDETAIL
+go
+--1:-<
+
+print '*** SESSION ***'
+truncate table SESSION
+go
+
+print '*** POLICINGLOG ***'
+truncate table POLICINGLOG
+go
+
+print '*** TABLEATTRIBUTES ***'
+delete from TABLEATTRIBUTES
+where (PARENTTABLE = 'CASES' and case when isnumeric(GENERICKEY) = 1 then convert(int,GENERICKEY) else null end > 0)
+or (PARENTTABLE = 'NAME' and case when isnumeric(GENERICKEY) = 1 then convert(int,GENERICKEY) else null end in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO > 504)) and n.usedasflag <> 3))
+go
+
+print '*** TRANSACTIONINFO ***'
+delete from TRANSACTIONINFO where TRANSACTIONDATE > '2008-01-01'	-- Date of starting database
+go
+
+print '*** TABLECODES ***'
+delete from TABLECODES
+where TABLETYPE = 10
+and TABLECODE > 101146 -- Last internal code value for 'TABLECODE' from starting database
+go
+
+-- Needs to be done last as deletion of names data from other tables is dependant on the existence of row in NAME table
+
+print '*** NAME ***'
+delete from NAME where NAME.NAMENO in (select n.NAMENO from NAME n where ((n.NAMENO < 500) or (n.NAMENO between 526 and 536) or (n.NAMENO between 541 and 544)or (n.NAMENO between 554 and 557) or (n.NAMENO = 561)))
+go
+print '*** NAME ***'
+delete from NAME where NAME.NAMENO in (select n.NAMENO from NAME n where n.NAMENO < 500 and n.usedasflag = 3)
+go
+
+--not working correctly
+--print '*** NAME  remove IPR test staff names ***'
+--delete from NAME where nameno > 0 and USEDASFLAG = 3 and nameno > 545 and firstname is not null
+--go
+
+-- Drop conversion staging tables
+/*
+ DROP TABLE Conv_ACTIVITYATTACHMENT
+GO
+ DROP TABLE Conv_ACTIVITYATTACHMENT_Fail
+GO
+ DROP TABLE Conv_ACTIVITYATTACHMENT_WithNo
+GO
+ DROP TABLE Conv_ACTIVITYHISTORY
+GO
+ DROP TABLE Conv_ADDRESS
+GO
+ DROP TABLE Conv_ALERT
+GO
+ DROP TABLE Conv_ALERT_Fail
+GO
+ DROP TABLE Conv_Alert_Resequence
+GO
+ DROP TABLE Conv_Alert_Resequence_MINID
+GO
+ DROP TABLE Conv_ASSOCIATEDNAME
+GO
+ DROP TABLE Conv_ASSOCIATEDNAME_Fail
+GO
+ DROP TABLE Conv_CASEEVENT
+GO
+ DROP TABLE Conv_CASEEVENT_Fail
+GO
+ DROP TABLE Conv_CaseEvent_Resequence
+GO
+ DROP TABLE Conv_CaseEvent_Resequence_MINID
+GO
+ DROP TABLE Conv_CASEIMAGE
+GO
+ DROP TABLE Conv_CASEIMAGE_Fail
+GO
+ DROP TABLE CONV_CASELOCATION
+GO
+ DROP TABLE Conv_CASENAME
+GO
+ DROP TABLE Conv_CASENAME_Fail
+GO
+ DROP TABLE Conv_CaseName_Resequence
+GO
+ DROP TABLE Conv_CaseName_Resequence_MINID
+GO
+ DROP TABLE Conv_CASENAME_WithNo
+GO
+ DROP TABLE Conv_CASENAME_WithNo_MINID
+GO
+ DROP TABLE Conv_CASES
+GO
+ DROP TABLE Conv_CASES_Fail
+GO
+ DROP TABLE Conv_CASES_WithNo
+GO
+ DROP TABLE Conv_CASETEXT
+GO
+ DROP TABLE Conv_CASETEXT_Fail
+GO
+ DROP TABLE Conv_CaseText_Resequence
+GO
+ DROP TABLE Conv_CaseText_Resequence_MINID
+GO
+ DROP TABLE Conv_CLIENT
+GO
+ DROP TABLE Conv_CLIENTDISCOUNT
+GO
+ DROP TABLE Conv_FailReason
+GO
+ DROP TABLE Conv_File_CommandLineOutput
+GO
+ DROP TABLE Conv_File_CompressQueue
+GO
+ DROP TABLE Conv_File_DatabaseRestoreFileList
+GO
+ DROP TABLE Conv_File_DatabaseRestoreQueue
+GO
+ DROP TABLE Conv_File_FolderContents
+GO
+ DROP TABLE Conv_File_SysFiles
+GO
+ DROP TABLE Conv_FILESIN
+GO
+ DROP TABLE Conv_FILESIN_Fail
+GO
+ DROP TABLE Conv_IMAGE
+GO
+ DROP TABLE Conv_IMAGE_Fail
+GO
+ DROP TABLE Conv_JOURNAL
+GO
+ DROP TABLE Conv_JOURNAL_Fail
+GO
+ DROP TABLE Conv_LEGACYCASEEVENT
+GO
+ DROP TABLE Conv_LEGACYCASEEVENTFAIL
+GO
+ DROP TABLE Conv_LEGACYEVENTWITHNO
+GO
+ DROP TABLE Conv_Log_ActionDetail
+GO
+ DROP TABLE Conv_Map_Country
+GO
+ DROP TABLE Conv_Map_NameEntityType
+GO
+ DROP TABLE Conv_Map_NameTitleGender
+GO
+ DROP TABLE Conv_NAME
+GO
+ DROP TABLE Conv_NAME_Fail
+GO
+ DROP TABLE Conv_NAME_WithNo
+GO
+ DROP TABLE Conv_NAMEACTIVITYATTACHMENT
+GO
+ DROP TABLE Conv_NAMEADDRESS_WithNo
+GO
+ DROP TABLE Conv_NAMEALIAS
+GO
+ DROP TABLE Conv_NAMEALIAS_Fail
+GO
+ DROP TABLE Conv_NAMEIMAGE
+GO
+ DROP TABLE Conv_NAMEIMAGE_Fail
+GO
+ DROP TABLE Conv_NAMETELECOM_WithNo
+GO
+ DROP TABLE Conv_NAMETEXT
+GO
+ DROP TABLE Conv_NAMETEXT_Fail
+GO
+ DROP TABLE Conv_OFFICIALNUMBERS
+GO
+ DROP TABLE Conv_OFFICIALNUMBERS_Fail
+GO
+ DROP TABLE Conv_Police_CaseList
+GO
+ DROP TABLE Conv_Police_ParallelJobStep
+GO
+ DROP TABLE Conv_RELATEDCASE
+GO
+ DROP TABLE Conv_RELATEDCASE_Fail
+GO
+ DROP TABLE Conv_RelatedCase_Resequence
+GO
+ DROP TABLE Conv_RelatedCase_Resequence_MINID
+GO
+ DROP TABLE Conv_ScriptsToRun
+GO
+ DROP TABLE Conv_Setting
+GO
+ DROP TABLE Conv_Setting_OverviewOpenActionsToOpen
+GO
+ DROP TABLE Conv_Stats_BatchBreakdown
+GO
+ DROP TABLE Conv_SUPPLIER
+GO
+ DROP TABLE Conv_TABLEATTRIBUTES
+GO
+ DROP TABLE Conv_TABLEATTRIBUTES_Fail
+GO
+ DROP TABLE Conv_TextFileContents
+GO
+*/
+
+/* Remove all iLOG info */
+
+declare @temp table (id int identity, [name] nvarchar(50))
+
+insert into @temp
+select name from sys.tables
+where name like '%ilog'
+order by name
+
+declare @i int = 1, @max int, @table nvarchar(50), @sql nvarchar(4000)
+
+select @max = max(id) from @temp
+
+while @i <= @max
+Begin
+	select @table = [name] 
+	from @temp
+	where id = @i
+
+	set @sql = N'
+	If (select count(*) from '+@table+')>0
+	Begin
+		truncate table '+@table+'
+	End
+	'
+	exec sp_executesql @sql
+
+	set @i+=1
+End
+
