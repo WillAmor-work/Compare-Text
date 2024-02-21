@@ -1,79 +1,148 @@
-USE [BBLIVE]
+USE [ACCSINT]
 GO
-/****** Object:  StoredProcedure [dbo].[BB_IPOExport_EPO]    Script Date: 21/02/2024 18:27:09 ******/
+/****** Object:  StoredProcedure [dbo].[bb_ExportSalesData]    Script Date: 21/02/2024 18:44:12 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
--- PROCEDURE :	BB_IPOExport_EPO
--- VERSION :	1
--- DESCRIPTION: This SP returns a table filled with Upcoming/Recent EP Renewal Fee info.
---	
--- CALLED BY :	IPOExports SSIS package
---
--- Date			Who		Change	Version	Description
--- -----------	-------	------	-------	----------------------------------------------- 
--- 22/01/2024	WDA				1		Procedure created
+--find		BBTEST.dbo. 
+--replace	BBLIVE.dbo.
 
-ALTER   procedure [dbo].[BB_IPOExport_EPO]
+ALTER   PROCEDURE [dbo].[bb_ExportSalesData]
 AS
 
 BEGIN
-	select
-		c.COUNTRYCODE as [Procedure],
-		'EP' + LEFT(SUBSTRING(appno.OFFICIALNUMBER, PATINDEX('%[0-9.-]%', appno.OFFICIALNUMBER), 8000), PATINDEX('%[^0-9.-]%', SUBSTRING(appno.OFFICIALNUMBER, PATINDEX('%[0-9.-]%', appno.OFFICIALNUMBER), 8000) + 'X') -1) as [Application Number],
-		[dbo].[fn_StripNonNumerics](regno.OFFICIALNUMBER) as [European patent No.],
-		c.irn as [Reference], 
-		--(select top 1 n.NAME from casename cn join name n on n.nameno = cn.nameno where cn.nametype = 'o' and cn.caseid = c.caseid order by cn.SEQUENCE) as [Applicant],
-		[Applicant] = NULL,
-		--CONVERT(DATE,nrd.NEXTRENEWALDATE) as [Due Date],
-		[Due Date] = NULL,
-		CASE c.COUNTRYCODE
-			WHEN 'EP' Then IIF(fc.RATENO=99996, 30, 90)
-			WHEN 'UP' Then IIF(fc.RATENO=99996, 730, 750)
-		END + nrd.ANNUITY as [Fee Code],
-		fc.DISBBASEFEE as [Amount],
-		1 as [Number of Fees],
-		fc.DISBBASEFEE as [Total],
-		c.OFFICEID --leave in as SSIS will need to filter on Office
-	from 
-		cases c
-	join 
-		caseevent ce on ce.caseid = c.caseid 
-		and ce.eventno = 1352
-		and ce.eventdate between dateadd(day, -7, convert(date, getdate())) and convert(date, getdate())
-	left join 
-		OFFICIALNUMBERS appno on appno.caseid = c.caseid
-		and appno.NUMBERTYPE = 'A'
-	left join 
-		OFFICIALNUMBERS regno on regno.caseid = c.caseid
-		and regno.NUMBERTYPE = 'R'
-	join 
-		[dbo].[fn_GetNextRenewalDate] (0) nrd on nrd.caseid = c.caseid
-	left join CASEEVENT ce199 on ce199.CASEID = c.CASEID
-		and ce199.EVENTNO = -199
-		and ce199.EVENTDATE is not null
-		and ce199.CYCLE = nrd.CYCLE
-	join 
-		(
-			select cr.countrycode, r.rateno, fc.* 
-			from 
-				criteria cr
-			join 
-				rates r	on r.rateno = cr.RATENO
-			join 
-				FEESCALCULATION fc on fc.criteriano = cr.criteriano
-			where 
-				cr.countrycode in ('EP', 'UP')
-				and r.rateno in (99996, 100004)
-				and cr.RULEINUSE = 1
-		) fc on fc.CYCLENUMBER = nrd.ANNUITY
-			and fc.COUNTRYCODE = c.COUNTRYCODE
-			and (fc.RATENO = 99996 OR (fc.RATENO = 100004 and ce199.EVENTDATE is not null))
-	
-	where 
-		c.countrycode in ('EP', 'UP')
-		and c.casetype = 'A'
-		and c.propertytype = 'P'
+
+	; with narratives as (
+		select o.itemtransno, 
+			string_agg(ISNULL(bl.shortnarrative, bl.LONGNARRATIVE), CHAR(10)) within group (order by bl.DISPLAYSEQUENCE) as LineNarrs
+		from BBTEST.dbo.OPENITEM o
+		join BBTEST.dbo.BILLLINE bl 
+			on bl.itemtransno = o.itemtransno
+		group by  o.itemtransno
+	)
+	, NEW_SALESDATA as (
+		select  
+			itemtransno = o.itemtransno,
+			itemlineno = bl.itemlineno,
+			caseid = isnull(cs.CASEID,c.CASEID),
+			Inv_No = o.OPENITEMNO,
+			Inv_Type = Case When o.ITEMTYPE in (511, 516, 519) then 'S/crd' When o.ITEMTYPE in (510, 514, 517) then 'S/inv' end,
+			Inv_Date = o.ITEMDATE,
+			Cust_Code = n.NAMECODE,
+			Cust_Name = n.NAME,
+			Resp_Name = e.abbreviatedname,
+			OurRef1 = isnull(c.IRN,cs.IRN),
+			OurRef2 = NULL,
+			OurRef3 = NULL,
+			OurRef4 = NULL,
+			AddLine1 = a.Street1,
+			AddLine2 = a.Street2,
+			AddLine3 = NULL,
+			AddLine4 = NULL,
+			City = a.City,
+			CtyState = a.State,
+			PostCode = a.PostCode,
+			Country = ct.COUNTRY,
+			ProdCode = ISNULL(c.PropertyType, cs.PropertyType)+'-'+IIF((select [dbo].[bb_fn_ForeignCountry](ISNULL(c.countrycode, cs.countrycode))) = 1, 'FGN', ISNULL(c.countrycode, cs.countrycode))+'-'+wt.WIPTYPEID,
+			ProdDesc = wy.description+' '+IIF((select [dbo].[bb_fn_ForeignCountry](ISNULL(c.countrycode, cs.countrycode))) = 1, 'Foreign', ISNULL(c.countrycode, cs.countrycode)),
+			CCY_Tran = ISNULL(o.CURRENCY,(select colcharacter from BBTEST.dbo.sitecontrol where controlid = 'currency')), --CCY_Tran
+			Sequence = right('000'+convert(nvarchar(11),bl.DISPLAYSEQUENCE),3),
+			LineRef1 = bl.IRN,
+			LineRef2 = bl.IRN,
+			LineResp = e1.ABBREVIATEDNAME,
+			LineNarr = ISNULL(bl.ShortNarrative,bl.LongNarrative),
+			LineDesc = wt.description,
+			Quantity = 1.00,
+			Unit_Val = isnull(bl.foreignvalue,bl.Value),
+			GoodsTot = isnull(bl.foreignvalue,bl.Value) * 1.00,
+			VAT_Code = vi.VAT_Code,
+			VAT_Desc = vi.VAT_Desc,
+			VATValue = isnull(bl.LOCALTAX,0),
+			Stage = wt.WIPTYPEID,
+			Inv_Narr = ISNULL(CASE WHEN(datalength(O.LONGREFTEXT)>0) THEN O.LONGREFTEXT ELSE O.REFERENCETEXT END + CHAR(10),'') + nr.LineNarrs,
+			EXT_Path1 = NULL,
+			EXT_Path2 = NULL,	
+			INT_Path1 = NULL,	
+			INT_Path2 = NULL,	
+			Group_ID = 	gr.idGRP,
+			TaxStatus = ts.Sage_Tax,
+			Your_Ref = cn.REFERENCENO,
+			ProcessedFlag = 1,
+			ImportStatus = 0,
+			UFP_Flag = IIF(wy.WIPTYPEID in ('UFPSC','UFPPD', 'UFPOR','UFPRSC','UFPRPD','UFPROR'), 1, 0)
+
+		from BBTEST.dbo.OPENITEM o
+		join BBTEST.dbo.NAME n 
+			on n.NAMENO = o.ACCTDEBTORNO
+		join BBTEST.dbo.EMPLOYEE e
+			on e.EMPLOYEENO = o.EMPLOYEENO
+		join BBTEST.dbo.ADDRESS a 
+			on a.addresscode = n.postaladdress
+		join BBTEST.dbo.COUNTRY ct 
+			on ct.COUNTRYCODE = a.countrycode
+		join BBTEST.dbo.BILLLINE bl
+			on bl.itemtransno = o.itemtransno
+		left join BBTEST.dbo.CASES c
+			on c.caseid = o.maincaseid
+		left join BBTEST.dbo.CASES cs
+			on cs.IRN = bl.irn	
+		join BBTEST.dbo.EMPLOYEE e1
+			on e1.SIGNOFFNAME = bl.PRINTNAME
+		join BBTEST.dbo.WIPTEMPLATE wt
+			on wt.wipcode = bl.wipcode
+		join BBTEST.dbo.WIPTYPE wy
+			on wy.wiptypeid = wt.wiptypeid
+		join ACCSINT..stg_TaxStatus ts
+			on ts.Inpro_Tax = bl.TAXCODE
+		join ACCSINT..stg_VAT_Info vi
+			on vi.Inpro_WIPCATEGORY = bl.CATEGORYCODE
+		left join (
+				select c.IRN, cn.* 
+				from BBTEST.dbo.CASENAME cn 
+				join BBTEST.dbo.CASES c on c.caseid = cn.caseid
+			) cn 
+			on cn.IRN = bl.IRN and cn.NAMENO = n.nameno
+			and cn.NAMETYPE = 'D'
+		join narratives nr on nr.itemtransno = o.itemtransno
+		left join BBTEST.dbo.FILESIN fi
+			on fi.NAMENO = n.NAMENO
+		left join ACCSINT..stg_IDGRP gr
+			on gr.Inpro_CCY = ISNULL(o.CURRENCY,(select colcharacter from BBTEST.dbo.sitecontrol where controlid = 'currency'))
+			and gr.agent = IIF(fi.nameno is null, 0, 1)
+			and isnull(gr.localflag,0) = IIF(n.nationality='GB', 1, 0)	
+		where o.ITEMTYPE in (511, 516, 519, 510, 514, 517) 
+		and o.STATUS = 1
+	)
+
+
+	INSERT INTO ACCSINT.dbo.SALES_DATA
+	SELECT src.* from NEW_SALESDATA src
+	LEFT JOIN ACCSINT.dbo.SALES_DATA tar
+		on tar.itemtransno = src.itemtransno
+		and tar.itemlineno = src.itemlineno
+	WHERE tar.itemtransno IS NULL
+
+
+	UPDATE cs
+	SET IRN = inpro.IRN,
+		TITLE = inpro.TITLE,
+		ImportStatus = 0
+	FROM ACCSINT.dbo.SALES_DATA sd
+	JOIN BBTEST.dbo.CASES inpro
+		on inpro.caseid = sd.caseid
+	JOIN ACCSINT.dbo.CASES cs
+		on cs.CASEID = sd.caseid
+
+
+	INSERT INTO ACCSINT.dbo.CASES (CASEID, IRN, TITLE)
+	SELECT inpro.CASEID, inpro.IRN, inpro.TITLE
+	FROM ACCSINT.dbo.SALES_DATA sd
+	JOIN BBTEST.dbo.CASES inpro
+		on inpro.caseid = sd.caseid
+	LEFT JOIN ACCSINT.dbo.CASES cs
+		on cs.CASEID = sd.caseid
+	WHERE cs.CASEID is NULL
+	GROUP BY inpro.CASEID, inpro.IRN, inpro.TITLE
 
 END
